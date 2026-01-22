@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Segmentación{% endblock %}</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <!-- CSS propio -->
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+</head>
+<body>
+
+<div class="container-fluid">
+    <div class="row min-vh-100">
+
+        <!-- SIDEBAR -->
+        <nav class="col-2 bg-dark text-white p-3">
+            <h5 class="mb-4">Segmentación</h5>
+
+            <ul class="nav nav-pills flex-column gap-2">
+                <li class="nav-item">
+                    <a class="nav-link active" href="#">
+                        Referencias
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-white" href="#">
+                        Inventario
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-white" href="#">
+                        Analíticas
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- CONTENIDO PRINCIPAL -->
+        <main class="col-10 p-4 bg-light">
+            {% block content %}
+            <!-- Aquí se renderiza cada módulo -->
+            {% endblock %}
+        </main>
+
+    </div>
+</div>
+
+<!-- Bootstrap 5 JS -->
+<script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js">
+</script>
+
+</body>
+</html>

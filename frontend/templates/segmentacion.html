@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+  <!-- ============================= -->
+  <!-- BARRA DE FILTROS (UI solamente) -->
+  <!-- ============================= -->
+  <div class="card mb-3">
+    <div class="card-body">
+
+      <form class="row g-2 align-items-end">
+
+        <div class="col-md-3">
+          <label class="form-label">Referencia</label>
+          <input type="text" class="form-control" placeholder="Buscar referencia">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Categoría</label>
+          <select class="form-select">
+            <option value="">Todas</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Color</label>
+          <input type="text" class="form-control" placeholder="Color">
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Estado</label>
+          <select class="form-select">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <button type="button" class="btn btn-primary w-100">
+            Filtrar
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+  <!-- ============================= -->
+  <!-- LISTADO DE REFERENCIAS -->
+  <!-- ============================= -->
+  <div>
+
+    {% for ref in referencias %}
+
+    <div class="card mb-3 shadow-sm">
+      <div class="row g-0 align-items-center">
+
+        <!-- Imagen -->
+        <div class="col-md-2 text-center p-2">
+          <img
+            src="https://via.placeholder.com/120x120?text=IMG"
+            class="img-fluid rounded"
+            alt="Imagen referencia">
+        </div>
+
+        <!-- Información principal -->
+        <div class="col-md-6">
+          <div class="card-body py-2">
+
+            <h6 class="fw-bold mb-1">
+              {{ ref.referencia }}
+            </h6>
+
+            <p class="mb-0 small text-muted">
+              {{ ref.descripcion }}
+            </p>
+
+            <p class="mb-1 small">
+              Categoría: {{ ref.categoria }}
+            </p>
+
+            <p class="mb-1 small">
+              Color: {{ ref.color }} ({{ ref.codigo_color }})
+            </p>
+
+            <span class="badge bg-success">
+              {{ ref.estado }}
+            </span>
+
+          </div>
+        </div>
+
+        <!-- Métricas (placeholder) -->
+        <div class="col-md-4">
+          <div class="card-body py-2 border-start">
+
+            <p class="small text-muted mb-1">
+              Métricas
+            </p>
+
+            <p class="mb-0 small text-secondary">
+              Promedio venta: —
+            </p>
+
+            <p class="mb-0 small text-secondary">
+              CPD: —
+            </p>
+
+            <p class="mb-0 small text-secondary">
+              Retorno: —
+            </p>
+
+            <p class="mb-0 small text-secondary">
+              PV activos: —
+            </p>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    {% endfor %}
+
+  </div>
+
+  <!-- ============================= -->
+  <!-- PAGINACIÓN (UI) -->
+  <!-- ============================= -->
+  <nav class="d-flex justify-content-center mt-4">
+    <ul class="pagination">
+
+      <li class="page-item disabled">
+        <span class="page-link">Anterior</span>
+      </li>
+
+      <li class="page-item active">
+        <span class="page-link">1</span>
+      </li>
+
+      <li class="page-item">
+        <a class="page-link" href="#">2</a>
+      </li>
+
+      <li class="page-item">
+        <a class="page-link" href="#">3</a>
+      </li>
+
+      <li class="page-item">
+        <a class="page-link" href="#">Siguiente</a>
+      </li>
+
+    </ul>
+  </nav>
+
+</div>
+
+{% endblock %}
