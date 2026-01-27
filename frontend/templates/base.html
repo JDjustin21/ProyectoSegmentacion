@@ -14,15 +14,18 @@
     <link
         rel="stylesheet"
         href="{{ url_for('static', filename='css/style.css') }}"
+        
     >
+    
+
 </head>
 <body>
 
 <div class="container-fluid">
-    <div class="row min-vh-100">
+    <div class="row vh-100 overflow-hidden">
 
         <!-- SIDEBAR -->
-        <nav class="col-2 bg-dark text-white p-3">
+        <nav class="col-2 bg-dark text-white p-3 vh-100">
             <h5 class="mb-4">Segmentación</h5>
 
             <ul class="nav nav-pills flex-column gap-2">
@@ -45,7 +48,7 @@
         </nav>
 
         <!-- CONTENIDO PRINCIPAL -->
-        <main class="col-10 p-4 bg-light">
+        <main class="col-10 p-0 bg-light vh-100 d-flex flex-column">
             {% block content %}
             <!-- Aquí se renderiza cada módulo -->
             {% endblock %}

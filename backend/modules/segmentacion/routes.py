@@ -1,5 +1,7 @@
+# backend/modules/segmentacion/routes.py
 from flask import Blueprint, render_template
-from modules.segmentacion.services import obtener_referencias
+from config.settings import SQLSERVER_API_URL, SEGMENTACION_CARDS_PER_PAGE, IMAGES_BASE_URL
+from modules.segmentacion.services import SegmentacionService
 
 segmentacion_bp = Blueprint(
     "segmentacion",
@@ -13,9 +15,13 @@ def vista_segmentacion():
     Vista principal de segmentación.
     - Obtiene referencias desde la API
     - Renderiza la vista HTML
-    """
-    referencias = obtener_referencias()
+    """ 
+    servicio = SegmentacionService(SQLSERVER_API_URL)
+    referencias = servicio.obtener_referencias()
+
     return render_template(
-        "segmentation.html",
-        referencias=referencias
+        "segmentacion.html",
+        referencias=referencias,
+        cards_per_page=SEGMENTACION_CARDS_PER_PAGE,
+        images_base_url=IMAGES_BASE_URL
     )

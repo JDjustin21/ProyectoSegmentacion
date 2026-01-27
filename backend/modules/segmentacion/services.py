@@ -1,4 +1,9 @@
+# backend/modules/segmentacion/services.py
+
 import requests
+import json
+from datetime import datetime
+from decimal import Decimal 
 
 class SegmentacionService:
     """
@@ -21,5 +26,20 @@ class SegmentacionService:
         response = requests.post(url, timeout=30)
         response.raise_for_status()
 
+        def _json_safe(obj):
+            if isinstance(obj, (datetime,)):
+                return obj.isoformat()
+            if isinstance(obj, Decimal):
+                return float(obj)
+            return str(obj)
+
         data = response.json()
-        return data.get("datos", [])
+        datos = data.get("datos", [])
+
+        # “Re-serializa” para forzar compatibilidad JSON
+        datos = json.loads(json.dumps(datos, default=_json_safe))
+
+        return datos
+
+    
+        

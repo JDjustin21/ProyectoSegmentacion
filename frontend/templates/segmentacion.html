@@ -5,42 +5,70 @@
 <div class="container-fluid">
 
   <!-- ============================= -->
-  <!-- BARRA DE FILTROS (UI solamente) -->
+  <!-- BARRA DE FILTROS -->
   <!-- ============================= -->
-  <div class="card mb-3">
+  <div class="card mb-4">
     <div class="card-body">
 
-      <form class="row g-2 align-items-end">
+      <form class="row g-3 align-items-end">
 
-        <div class="col-md-3">
-          <label class="form-label">Referencia</label>
-          <input type="text" class="form-control" placeholder="Buscar referencia">
-        </div>
+        <!-- Tipo Portafolio -->
+      <div class="col-md-2">
+        <label class="form-label">Tipo Portafolio</label>
+        <select id="filtroPortafolio" class="form-select">
+          <option value="">Todos</option>
+          <option value="Linea">Línea</option>
+          <option value="Moda">Moda</option>
+        </select>
+      </div>
 
-        <div class="col-md-3">
-          <label class="form-label">Categoría</label>
-          <select class="form-select">
-            <option value="">Todas</option>
-          </select>
-        </div>
+        <!-- Línea Comercial -->
+      <div class="col-md-3">
+        <label class="form-label">Línea Comercial</label>
+        <select id="filtroLinea" class="form-select">
+          <option value="">Todas</option>
+        </select>
+        <!-- Luego se deshabilita dinámicamente -->
+      </div>
 
-        <div class="col-md-2">
-          <label class="form-label">Color</label>
-          <input type="text" class="form-control" placeholder="Color">
-        </div>
+        <!-- Estado -->
+      <div class="col-md-2">
+        <label class="form-label">Estado</label>
+        <select id="filtroEstado" class="form-select">
+          <option value="">Todos</option>
+          <option value="Activo">Activo</option>
+          <option value="Inactivo">Inactivo</option>
+        </select>
+      </div>
 
-        <div class="col-md-2">
-          <label class="form-label">Estado</label>
-          <select class="form-select">
-            <option value="">Todos</option>
-          </select>
-        </div>
+        <!-- Categoría -->
+      <div class="col-md-3">
+        <label class="form-label">Categoría</label>
+       <input
+        id="filtroCategoria"
+        class="form-control"
+        list="listaCategorias"
+        placeholder="Categoría">
+      <datalist id="listaCategorias"></datalist>
+      </div>
 
-        <div class="col-md-2">
-          <button type="button" class="btn btn-primary w-100">
-            Filtrar
-          </button>
-        </div>
+      <!-- Referencia -->
+      <div class="col-md-2">
+        <label class="form-label">Referencia</label>
+        <input
+        id="filtroReferencia"
+        class="form-control"
+        list="listaReferencias"
+        placeholder="Referencia">
+      <datalist id="listaReferencias"></datalist>
+      </div>
+
+        <!-- Botón -->
+      <div class="col-md-12 text-end">
+        <button type="button" id="btnLimpiar" class="btn btn-outline-secondary px-4">
+        Limpiar
+        </button>
+      </div>
 
       </form>
 
@@ -51,10 +79,20 @@
   <!-- LISTADO DE REFERENCIAS -->
   <!-- ============================= -->
   <div>
-
+    <div
+  id="cards-container"
+  data-cards-per-page="{{ cards_per_page }}"
+  data-images-base-url="{{ images_base_url }}"
+  data-placeholder-url="https://via.placeholder.com/120x120?text=IMG"> 
     {% for ref in referencias %}
 
-    <div class="card mb-3 shadow-sm">
+    <div class="card mb-3 shadow-sm reference-card"
+     data-portafolio="{{ ref.tipoPortafolio }}"
+     data-linea="{{ ref.linea }}"
+     data-estado="{{ ref.estado }}"
+     data-categoria="{{ ref.categoria }}"
+     data-referencia="{{ ref.referencia }}">
+
       <div class="row g-0 align-items-center">
 
         <!-- Imagen -->
@@ -66,23 +104,19 @@
         </div>
 
         <!-- Información principal -->
-        <div class="col-md-6">
+        <div class="col-md-4">
           <div class="card-body py-2">
 
             <h6 class="fw-bold mb-1">
               {{ ref.referencia }}
             </h6>
 
-            <p class="mb-0 small text-muted">
+            <p class="mb-1 small text-muted">
               {{ ref.descripcion }}
             </p>
 
             <p class="mb-1 small">
-              Categoría: {{ ref.categoria }}
-            </p>
-
-            <p class="mb-1 small">
-              Color: {{ ref.color }} ({{ ref.codigo_color }})
+              <strong>Categoría:</strong> {{ ref.categoria }}
             </p>
 
             <span class="badge bg-success">
@@ -91,29 +125,47 @@
 
           </div>
         </div>
-
-        <!-- Métricas (placeholder) -->
-        <div class="col-md-4">
+        <!-- BLOQUE 3: CLASIFICACIÓN -->
+        <div class="col-md-3">
           <div class="card-body py-2 border-start">
 
-            <p class="small text-muted mb-1">
-              Métricas
+            <p class="mb-1 small">
+              <strong>Portafolio:</strong> {{ ref.tipoPortafolio }}
             </p>
 
-            <p class="mb-0 small text-secondary">
-              Promedio venta: —
+            <p class="mb-1 small">
+              <strong>Línea:</strong> {{ ref.linea }}
             </p>
 
-            <p class="mb-0 small text-secondary">
-              CPD: —
+            <p class="mb-1 small">
+              <strong>Color:</strong> {{ ref.color }}
             </p>
 
-            <p class="mb-0 small text-secondary">
-              Retorno: —
+            <p class="mb-1 small">
+              <strong>Codigo de Color:</strong> {{ ref.codigoColor }}
             </p>
 
-            <p class="mb-0 small text-secondary">
-              PV activos: —
+          </div>
+        </div>
+
+        <!-- Métricas (placeholder) -->
+        <div class="col-md-3">
+          <div class="card-body py-2 border-start">
+
+            <p class="mb-1 small">
+              <strong>Promedio Ventas :</strong> —
+            </p>
+
+            <p class="mb-1 small">
+              <strong>CPD:</strong> —
+            </p>
+
+            <p class="mb-1 small">
+              <strong>% Retorno:</strong> —
+            </p>
+
+            <p class="mb-0 small">
+              <strong>Tiendas Activas:</strong> —
             </p>
 
           </div>
@@ -121,7 +173,6 @@
 
       </div>
     </div>
-
     {% endfor %}
 
   </div>
@@ -132,29 +183,28 @@
   <nav class="d-flex justify-content-center mt-4">
     <ul class="pagination">
 
+      <li class="page-item">
+        <button class="page-link" id="prevPage">Anterior</button>
+      </li>
+
       <li class="page-item disabled">
-        <span class="page-link">Anterior</span>
-      </li>
-
-      <li class="page-item active">
-        <span class="page-link">1</span>
+        <span class="page-link" id="pageIndicator">Página 1</span>
       </li>
 
       <li class="page-item">
-        <a class="page-link" href="#">2</a>
-      </li>
-
-      <li class="page-item">
-        <a class="page-link" href="#">3</a>
-      </li>
-
-      <li class="page-item">
-        <a class="page-link" href="#">Siguiente</a>
+        <button class="page-link" id="nextPage">Siguiente</button>
       </li>
 
     </ul>
   </nav>
 
 </div>
+
+<script id="data-referencias" type="application/json">
+  {{ referencias | tojson }}
+</script>
+
+<!-- ============================= -->
+<script src="{{ url_for('static', filename='js/segmentacion.js') }}"></script>
 
 {% endblock %}
