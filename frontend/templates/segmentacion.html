@@ -40,6 +40,13 @@
           <option value="Inactivo">Inactivo</option>
         </select>
       </div>
+            <!-- Cuento -->
+      <div class="col-md-2">
+        <label class="form-label">Cuento</label>
+        <select id="filtroCuento" class="form-select">
+          <option value="">Todos</option>
+        </select>
+      </div>
 
         <!-- Categoría -->
       <div class="col-md-3">
@@ -64,7 +71,7 @@
       </div>
 
         <!-- Botón -->
-      <div class="col-md-12 text-end">
+      <div class="col-md-2 ms-auto d-flex justify-content-end align-items-end">
         <button type="button" id="btnLimpiar" class="btn btn-outline-secondary px-4">
         Limpiar
         </button>
@@ -119,7 +126,7 @@
               <strong>Categoría:</strong> {{ ref.categoria }}
             </p>
 
-            <span class="badge bg-success">
+            <span class="badge {{ 'bg-success' if (ref.estado or '')|trim|lower == 'Activo' else 'bg-danger' }}">
               {{ ref.estado }}
             </span>
 
@@ -142,7 +149,7 @@
             </p>
 
             <p class="mb-1 small">
-              <strong>Codigo de Color:</strong> {{ ref.codigoColor }}
+              <strong>Cuento</strong> {{ ref.cuento }}
             </p>
 
           </div>

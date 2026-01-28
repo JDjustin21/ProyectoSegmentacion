@@ -41,6 +41,7 @@
       portafolio: "",
       linea: "",
       estado: "",
+      cuento: "",
       categoria: "",
       referencia: ""
     };
@@ -51,6 +52,7 @@
     const filtroPortafolio = document.getElementById("filtroPortafolio");
     const filtroLinea = document.getElementById("filtroLinea");
     const filtroEstado = document.getElementById("filtroEstado");
+    const filtroCuento = document.getElementById("filtroCuento");
     const filtroCategoria = document.getElementById("filtroCategoria");
     const filtroReferencia = document.getElementById("filtroReferencia");
 
@@ -84,12 +86,15 @@
         const port = norm(r.tipoPortafolio);
         const lin = norm(r.linea);
         const est = norm(r.estado);
+        const cue = norm(r.cuento);
         const cat = normLower(r.categoria);
         const ref = normLower(r.referencia);
 
         if (filtros.portafolio && port !== norm(filtros.portafolio)) return false;
         if (filtros.linea && lin !== norm(filtros.linea)) return false;
         if (filtros.estado && est !== norm(filtros.estado)) return false;
+        if (filtros.cuento && cue !== norm(filtros.cuento)) return false;
+
 
         if (catFiltro && !cat.includes(catFiltro)) return false;
         if (refFiltro && !ref.includes(refFiltro)) return false;
@@ -150,6 +155,20 @@
           filtroEstado.appendChild(opt);
         });
       }
+            // Cuento
+      const cuentos = [...new Set(datasetFiltrado.map(r => norm(r.cuento)).filter(Boolean))].sort();
+
+      if (filtroCuento) {
+        const valorActual = norm(filtros.cuento);
+        filtroCuento.innerHTML = `<option value="">Todos</option>`;
+        cuentos.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c;
+          opt.textContent = c;
+          if (c === valorActual) opt.selected = true;
+          filtroCuento.appendChild(opt);
+        });
+      }
     }
 
     // =========================
@@ -188,6 +207,19 @@
       const descripcion = norm(ref.descripcion);
       const categoria = norm(ref.categoria);
       const estado = norm(ref.estado);
+      const cuento = norm(ref.cuento);
+      const estadoLower = estado.toLowerCase();
+      let badgeClass = "bg-secondary";
+      let badgeTextClass = "";
+
+      if (estadoLower === "activo") {
+        badgeClass = "bg-success";
+      } else if (estadoLower === "inactivo") {
+        badgeClass = "bg-danger";
+      } else if (estadoLower === "moda") {
+        badgeClass = "bg-warning";
+        badgeTextClass = "text-dark";
+      }
       const portafolio = norm(ref.tipoPortafolio);
       const linea = norm(ref.linea);
       const color = norm(ref.color);
@@ -225,7 +257,7 @@
                 <h6 class="fw-bold mb-1">${referencia}</h6>
                 <p class="mb-1 small text-muted">${descripcion}</p>
                 <p class="mb-1 small"><strong>Categoría:</strong> ${categoria}</p>
-                <span class="badge bg-success">${estado}</span>
+                <span class="badge ${badgeClass} ${badgeTextClass}">${estado}</span>
               </div>
             </div>
 
@@ -234,7 +266,7 @@
                 <p class="mb-1 small"><strong>Portafolio:</strong> ${portafolio}</p>
                 <p class="mb-1 small"><strong>Línea:</strong> ${linea}</p>
                 <p class="mb-1 small"><strong>Color:</strong> ${color}</p>
-                <p class="mb-1 small"><strong>Código de Color:</strong> ${codigoColor}</p>
+                <p class="mb-1 small"><strong>Cuento:</strong> ${cuento}</p>
               </div>
             </div>
 
@@ -300,6 +332,12 @@
       render();
     });
 
+    filtroCuento?.addEventListener("change", e => {
+      filtros.cuento = norm(e.target.value);
+      currentPage = 1;
+      render();
+    });
+
     filtroCategoria?.addEventListener("input", e => {
       filtros.categoria = norm(e.target.value).toLowerCase();
       currentPage = 1;
@@ -319,12 +357,15 @@
       filtros.portafolio = "";
       filtros.linea = "";
       filtros.estado = "";
+      filtros.cuento = "";
       filtros.categoria = "";
       filtros.referencia = "";
+      
 
       if (filtroPortafolio) filtroPortafolio.value = "";
       if (filtroLinea) filtroLinea.value = "";
       if (filtroEstado) filtroEstado.value = "";
+      if (filtroCuento) filtroCuento.value = "";
       if (filtroCategoria) filtroCategoria.value = "";
       if (filtroReferencia) filtroReferencia.value = "";
 
