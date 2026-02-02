@@ -5,6 +5,12 @@ import json
 from datetime import datetime
 from decimal import Decimal 
 
+import re
+from typing import Any, Dict, List, Optional, Tuple
+from config.settings import POSTGRES_DSN, POSTGRES_TIENDAS_VIEW, DEFAULT_TALLAS_MVP
+from repositories.postgres_repository import PostgresRepository
+
+
 class SegmentacionService:
     """
     Servicio encargado de consumir la API de SQL Server.

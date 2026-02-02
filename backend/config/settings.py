@@ -1,13 +1,24 @@
-#backend/config/settings.py
-# Configuracion de ajustes para la conexion con SQL Server
-SQLSERVER_API_URL = "http://localhost:5031"
+# backend/config/settings.py
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 
+# Cargar .env desde la raíz del proyecto
+ROOT_DIR = Path(__file__).resolve().parents[2]  # .../proyecto/
+load_dotenv(ROOT_DIR / ".env")
+
+SQLSERVER_API_URL = "http://localhost:5031"
 SEGMENTACION_CARDS_PER_PAGE = 3
 
-# Imágenes de referencias (carpeta externa)
-# Regla: el archivo se llama igual que la referencia (E47439.jpg / .png / etc.)
 REF_IMAGES_DIR = r"C:\Creytex\ImagenesReferencias"
 REF_IMAGES_ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
-
-# Endpoint base para construir la URL en el frontend
 IMAGES_BASE_URL = "/ref_images"
+
+POSTGRES_DSN = os.getenv("POSTGRES_DSN", "").strip()
+POSTGRES_TIENDAS_VIEW = os.getenv("POSTGRES_TIENDAS_VIEW", "vw_maestra_tiendas_activa_norm").strip()
+
+DEFAULT_TALLAS_MVP = os.getenv("DEFAULT_TALLAS_MVP", "S,M,L,XL").strip()
+LINEAS_TALLAS_FIJAS = os.getenv(
+    "LINEAS_TALLAS_FIJAS",
+    "Dama Exterior;Dama Deportivo;Hombre Exterior;Hombre Deportivo"
+).strip()

@@ -1,0 +1,271 @@
+/* =========================
+   MODAL DETALLE (BLANCO / AZUL)
+   ========================= */
+
+.detalle-modal{
+  background:#ffffff;
+  color:#0b1f3a; /* azul oscuro */
+  border:1px solid rgba(11,31,58,.15);
+}
+
+/* =========================
+   HEADER: 3 BLOQUES
+   (info | métricas | cerrar)
+   ========================= */
+.detalle-header{
+  display:grid;
+  grid-template-columns: 1.6fr 0.9fr auto;
+  align-items:center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(11,31,58,.15);
+  background:#333880;
+  color:#eef3f8;
+}
+
+.detalle-header-left{
+  min-width: 0;
+}
+
+.detalle-ref{
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.detalle-sub{
+  font-size: 13px;
+  opacity: .85;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* usamos display: contents para que métricas y botón caigan en col 2 y 3 del grid */
+.detalle-header-right{
+  display: contents;
+}
+
+.detalle-metricas{
+  grid-column: 2;
+  text-align: left;
+  padding: 10px 12px;
+  border:1px solid rgba(11,31,58,.15);
+  border-radius: 10px;
+  background: #f7f9fc;
+  min-width: 0;
+}
+
+.detalle-metricas-title{
+  font-size: 12px;
+  opacity: .75;
+  margin-bottom: 2px;
+  color:black
+}
+
+.detalle-metricas-value{
+  font-size: 13px;
+  font-weight: 800;
+  color:black
+}
+
+.detalle-close{
+  grid-column: 3;
+  justify-self: end;
+  background: transparent;
+  border:1px solid rgba(11,31,58,.25);
+  color:#ffffff;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  line-height: 1;
+}
+
+.detalle-close:hover{
+  background:#f1f4f8;
+}
+
+/* =========================
+   FILTROS: BARRA CLARA BONITA
+   ========================= */
+.detalle-filtros{
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr 1.2fr auto;
+  gap: 10px;
+  padding: 12px 16px;
+  background:#f7f9fc;
+  border-bottom: 1px solid rgba(11,31,58,.15);
+}
+
+.detalle-filtro label{
+  font-size: 12px;
+  color:#0b1f3a;
+  font-weight: 600;
+  opacity: .85;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.detalle-filtros .form-control{
+  border:1px solid rgba(11,31,58,.18);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.detalle-filtros .form-control:focus{
+  box-shadow: 0 0 0 .2rem rgba(11,31,58,.12);
+  border-color: rgba(11,31,58,.28);
+}
+
+.detalle-filtro-acciones{
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  justify-content: flex-end;
+}
+
+.detalle-filtro-acciones .btn{
+  border-radius: 10px;
+}
+
+/* botones en estilo claro (sin “outline-light” oscuro) */
+.detalle-filtro-acciones .btn-outline-light{
+  color:#0b1f3a;
+  border-color: rgba(11,31,58,.25);
+  background:#ffffff;
+}
+
+.detalle-filtro-acciones .btn-outline-light:hover{
+  background:#eef3f8;
+}
+
+/* =========================
+   BODY: LISTA DE TIENDAS
+   ========================= */
+.detalle-lista{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Tarjeta tienda: 3 columnas (info | métricas | tallas) */
+.detalle-row{
+  border:1px solid rgba(11,31,58,.15);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background:#ffffff;
+  box-shadow: 0 2px 10px rgba(11,31,58,.05);
+
+  display: grid;
+  grid-template-columns: 1.25fr 0.9fr auto;
+  gap: 10px;
+  align-items: start;
+}
+
+/* Izquierda */
+.detalle-row-left .dep{
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.detalle-row-left .meta{
+  margin-top: 3px;
+  font-size: 12px;
+  opacity: .85;
+}
+
+.detalle-row-left .small{
+  margin-top: 2px;
+  font-size: 12px;
+  opacity: .72;
+}
+
+/* Centro */
+.detalle-row-mid{
+  font-size: 12px;
+  opacity: .9;
+  border-left: 1px dashed rgba(11,31,58,.18);
+  padding-left: 10px;
+}
+
+/* =========================
+   TALLAS: MINI-CELDAS EN COLUMNAS
+   ========================= */
+.detalle-tallas{
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(60px, 1fr);
+  gap: 6px;
+  align-items: start;
+
+  border-left: 1px dashed rgba(11,31,58,.18);
+  padding-left: 10px;
+}
+
+.detalle-talla-col{
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  justify-items: center;
+  align-content: start;
+
+  background:#f7f9fc;
+  border:1px solid rgba(11,31,58,.12);  
+  border-radius: 8px;
+  padding: 4px 4px;
+  gap: 3px;
+}
+
+.detalle-talla-label{
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.btn-qty{
+  border-radius: 10px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
+/* Input */
+.detalle-qty-box{
+  width: 38px;
+  text-align: center;
+  padding: 2px 4px;
+  font-size: 11px;
+
+  background:#ffffff !important;
+  color:#0b1f3a !important;
+  border:1px solid rgba(11,31,58,.25) !important;
+  border-radius: 10px !important;
+}
+
+/* =========================
+   FOOTER
+   ========================= */
+.detalle-footer{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(11,31,58,.15);
+  background:#ffffff;
+}
+
+.detalle-footer-left{
+  font-size: 12px;
+  opacity: .85;
+}
+
+/* Botón cerrar footer como claro */
+.detalle-footer .btn-outline-light{
+  color:#0b1f3a;
+  border-color: rgba(11,31,58,.25);
+  background:#ffffff;
+}
+
+.detalle-footer .btn-outline-light:hover{
+  background:#eef3f8;
+}

@@ -71,9 +71,17 @@
       </div>
 
         <!-- Botón -->
-      <div class="col-md-2 ms-auto d-flex justify-content-end align-items-end">
+      <div class="col-md-4 ms-auto d-flex justify-content-end align-items-end gap-2">
+        <button type="button" id="btnExportHoyGlobal" class="btn btn-outline-dark px-4">
+          Exportar hoy
+        </button>
+
+        <button type="button" id="btnExportSesionGlobal" class="btn btn-outline-dark px-4">
+          Exp.sesión
+        </button>
+
         <button type="button" id="btnLimpiar" class="btn btn-outline-secondary px-4">
-        Limpiar
+          Limpiar
         </button>
       </div>
 
@@ -90,7 +98,10 @@
   id="cards-container"
   data-cards-per-page="{{ cards_per_page }}"
   data-images-base-url="{{ images_base_url }}"
-  data-placeholder-url="https://via.placeholder.com/120x120?text=IMG"> 
+  data-placeholder-url="https://via.placeholder.com/120x120?text=IMG"
+  data-default-tallas-mvp="{{ default_tallas_mvp }}"
+  data-lineas-tallas-fijas="{{ lineas_tallas_fijas }}"> 
+  
     {% for ref in referencias %}
 
     <div class="card mb-3 shadow-sm reference-card"
@@ -126,7 +137,7 @@
               <strong>Categoría:</strong> {{ ref.categoria }}
             </p>
 
-            <span class="badge {{ 'bg-success' if (ref.estado or '')|trim|lower == 'Activo' else 'bg-danger' }}">
+            <span class="badge {{ 'bg-success' if (ref.estado or '')|trim|lower == 'activo' else 'bg-danger' }}">
               {{ ref.estado }}
             </span>
 
@@ -212,6 +223,100 @@
 </script>
 
 <!-- ============================= -->
+<!-- MODAL: Detalle / Segmentación por Tienda -->
+<!-- ============================= -->
+<div class="modal fade" id="modalDetalleReferencia" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content detalle-modal">
+
+      <!-- HEADER (como mockup) -->
+      <div class="detalle-header">
+        <div class="detalle-header-left">
+          <div class="detalle-ref" id="detalleRefTitulo">REFERENCIASKU</div>
+          <div class="detalle-sub" id="detalleRefSubtitulo">Categoria - Linea - descripcion</div>
+        </div>
+
+        <div class="detalle-header-right">
+          <div class="detalle-metricas">
+            <div class="detalle-metricas-title">Métricas</div>
+            <div class="detalle-metricas-value" id="detalleRankingLinea">Rankin_linea</div>
+          </div>
+
+          <button type="button" class="detalle-close" data-bs-dismiss="modal" aria-label="Cerrar">X</button>
+        </div>
+      </div>
+
+      <!-- FILTROS (como mockup) -->
+      <div class="detalle-filtros">
+        <div class="detalle-filtro">
+          <label>Cliente (Dependencia)</label>
+          <input id="detalleFiltroDependencia" class="form-control form-control-sm" placeholder="">
+        </div>
+
+        <div class="detalle-filtro">
+          <label>Zona</label>
+          <input id="detalleFiltroZona" class="form-control form-control-sm" placeholder="">
+        </div>
+
+        <div class="detalle-filtro">
+          <label>Clima</label>
+          <input id="detalleFiltroClima" class="form-control form-control-sm" placeholder="">
+        </div>
+
+        <div class="detalle-filtro">
+          <label>Testeo</label>
+          <input id="detalleFiltroTesteo" class="form-control form-control-sm" placeholder="">
+        </div>
+
+        <div class="detalle-filtro">
+          <label>Clasificación (Rankin_linea)</label>
+          <input id="detalleFiltroClasificacion" class="form-control form-control-sm" placeholder="">
+        </div>
+
+        <div class="detalle-filtro-acciones">
+          <button type="button" class="btn btn-outline-light btn-sm" id="btnDetallePresetSku">
+            Predeterminado
+          </button>
+          <button type="button" class="btn btn-outline-light btn-sm" id="btnDetalleLimpiar">
+            Limpiar
+          </button>
+        </div>
+      </div>
+
+      <!-- BODY -->
+      <div class="modal-body">
+
+        <div id="detalleLoading" class="text-center text-muted py-3" style="display:none;">
+          Cargando tiendas y segmentación...
+        </div>
+
+        <div id="detalleError" class="alert alert-danger" style="display:none;"></div>
+
+        <!-- LISTA TIENDAS -->
+        <div id="detalleTiendasContainer" class="detalle-lista">
+          <!-- Render dinámico desde detalle.js -->
+        </div>
+
+      </div>
+
+      <!-- FOOTER -->
+      <div class="detalle-footer">
+        <div class="detalle-footer-left" id="detalleFooterInfo">—</div>
+        <div class="detalle-footer-right">
+          <button type="button" class="btn btn-success" id="btnDetalleGuardar">Guardar</button>
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================= -->
+<!-- Scripts: detalle primero (expone la función), luego segmentacion -->
+<!-- ============================= -->
+<script src="{{ url_for('static', filename='js/detalle.js') }}"></script>
 <script src="{{ url_for('static', filename='js/segmentacion.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
 {% endblock %}
