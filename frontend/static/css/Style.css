@@ -1,3 +1,10 @@
+html, body{
+  margin: 0;
+  padding: 0;
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: #f8f9fa; /* mismo tono de bg-light para que todo “fusione” */
+}
+
 /* =========================
    MODAL DETALLE (BLANCO / AZUL)
    ========================= */
@@ -17,7 +24,7 @@
    (info | métricas | cerrar)
    ========================= */
 .detalle-header{
-  display:grid;
+  display:flex;
   grid-template-columns: 1.6fr 0.9fr auto;
   align-items:center;
   gap: 14px;
@@ -25,16 +32,47 @@
   border-bottom: 1px solid rgba(11,31,58,.15);
   background:#333880;
   color:#eef3f8;
+  justify-content: space-between;
 }
 
 .detalle-header-left{
+  display: flex;
+  align-items: center;
+  flex: 1;
   min-width: 0;
 }
+
+.detalle-header-media{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.detalle-thumb{
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.20);
+  background: rgba(255,255,255,0.12);
+  flex: 0 0 auto;
+}
+
+.detalle-header-text{
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
 
 .detalle-ref{
   font-size: 18px;
   font-weight: 800;
   line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .detalle-sub{
@@ -48,7 +86,9 @@
 
 /* usamos display: contents para que métricas y botón caigan en col 2 y 3 del grid */
 .detalle-header-right{
-  display: contents;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .detalle-metricas{
@@ -87,7 +127,7 @@
 }
 
 .detalle-close:hover{
-  background:#f1f4f8;
+  background: rgba(255,255,255,0.22);
 }
 
 /* =========================
@@ -682,6 +722,7 @@
   flex: 1 1 auto;
   min-width: 0;
   padding: 18px;
+  padding-bottom: 16px;
 }
 
 /* colapsado */
@@ -770,6 +811,89 @@
   background: var(--soft-bg) !important;
 }
 
+
+/* Precio en card (rojo y más grande) */
+.product-price-row{
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.product-price-value{
+  font-weight: 800;
+  font-size: 1.05rem;     /* un poco más grande */
+  color: #111128;         /* rojo */
+}
+
+
+/* =========================
+   TOPBAR (barra superior)
+   ========================= */
+
+:root{
+  --topbar-h: 64px;
+}
+
+.topbar-global{
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.topbar-inner{
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+}
+
+.topbar-brand{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+}
+
+.topbar-logo{
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.topbar-title{
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 18px;
+  color: #0f172a; /* un negro elegante */
+  line-height: 1;
+}
+
+
+/* =========================
+   Layout: deja espacio para la topbar fija
+   ========================= */
+
+/* Si tu sidebar usa position: fixed o sticky con top:0,
+   esto evita que se meta debajo de la topbar */
+.sidebar{
+  top: var(--topbar-h);
+}
+
+.missing-image-msg{
+  margin-top: 6px;
+  font-size: 12px;
+  color: #b02a37; /* rojo tipo Bootstrap danger */
+  font-weight: 800;
+  text-align: left;
+}
 
 /* ============================
    FIN Style.css

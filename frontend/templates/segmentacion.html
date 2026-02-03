@@ -87,108 +87,19 @@
   </div>
 
   <!-- ============================= -->
-  <!-- LISTADO DE REFERENCIAS -->
+  <!-- CONTENEDOR DE REFERENCIAS -->
   <!-- ============================= -->
   <div>
     <div
       id="cards-container"
       class="products-grid"
       data-cards-per-page="{{ cards_per_page }}"
+      data-image-resolver-url="/segmentacion/api/imagenes/referencia"
       data-images-base-url="{{ images_base_url }}"
       data-placeholder-url="https://via.placeholder.com/120x120?text=IMG"
       data-default-tallas-mvp="{{ default_tallas_mvp }}"
       data-lineas-tallas-fijas="{{ lineas_tallas_fijas }}"> 
-      
-        {% for ref in referencias %}
-
-        <div class="card mb-3 shadow-sm reference-card"
-        data-portafolio="{{ ref.tipoPortafolio }}"
-        data-linea="{{ ref.linea }}"
-        data-estado="{{ ref.estado }}"
-        data-categoria="{{ ref.categoria }}"
-        data-referencia="{{ ref.referencia }}">
-
-          <div class="row g-0 align-items-center">
-
-        <!-- Imagen -->
-        <div class="col-md-2 text-center p-2">
-          <img
-            src="https://via.placeholder.com/120x120?text=IMG"
-            class="img-fluid rounded"
-            alt="Imagen referencia">
-        </div>
-
-        <!-- Información principal -->
-        <div class="col-md-4">
-          <div class="card-body py-2">
-
-            <h6 class="fw-bold mb-1">
-              {{ ref.referencia }}
-            </h6>
-
-            <p class="mb-1 small text-muted">
-              {{ ref.descripcion }}
-            </p>
-
-            <p class="mb-1 small">
-              <strong>Categoría:</strong> {{ ref.categoria }}
-            </p>
-
-            <span class="badge {{ 'bg-success' if (ref.estado or '')|trim|lower == 'activo' else 'bg-danger' }}">
-              {{ ref.estado }}
-            </span>
-
-          </div>
-        </div>
-        <!-- BLOQUE 3: CLASIFICACIÓN -->
-        <div class="col-md-3">
-          <div class="card-body py-2 border-start">
-
-            <p class="mb-1 small">
-              <strong>Portafolio:</strong> {{ ref.tipoPortafolio }}
-            </p>
-
-            <p class="mb-1 small">
-              <strong>Línea:</strong> {{ ref.linea }}
-            </p>
-
-            <p class="mb-1 small">
-              <strong>Color:</strong> {{ ref.color }}
-            </p>
-
-            <p class="mb-1 small">
-              <strong>Cuento</strong> {{ ref.cuento }}
-            </p>
-
-          </div>
-        </div>
-
-        <!-- Métricas (placeholder) -->
-        <div class="col-md-3">
-          <div class="card-body py-2 border-start">
-
-            <p class="mb-1 small">
-              <strong>Promedio Ventas :</strong> —
-            </p>
-
-            <p class="mb-1 small">
-              <strong>CPD:</strong> —
-            </p>
-
-            <p class="mb-1 small">
-              <strong>% Retorno:</strong> —
-            </p>
-
-            <p class="mb-0 small">
-              <strong>Tiendas Activas:</strong> —
-            </p>
-
-          </div>
-        </div>
-
-      </div>
     </div>
-    {% endfor %}
 
   </div>
 
@@ -229,8 +140,14 @@
       <!-- HEADER (como mockup) -->
       <div class="detalle-header">
         <div class="detalle-header-left">
-          <div class="detalle-ref" id="detalleRefTitulo">REFERENCIASKU</div>
-          <div class="detalle-sub" id="detalleRefSubtitulo">Categoria - Linea - descripcion</div>
+          <div class="detalle-header-media">
+            <img id="detalleImg" class="detalle-thumb" src="" alt="Imagen referencia" />
+            <div class="detalle-header-text">
+              <div class="detalle-ref" id="detalleRefTitulo">...</div>
+              <div class="detalle-sub" id="detalleRefSubtitulo">...</div>
+              <div id="detalleImgMsg" class="detalle-img-msg" style="display:none;"></div>
+            </div>
+          </div>
         </div>
 
         <div class="detalle-header-right">
@@ -339,6 +256,7 @@
 <!-- Scripts: detalle primero (expone la función), luego segmentacion -->
 <!-- ============================= -->
 <script src="{{ url_for('static', filename='js/detalle.js') }}"></script>
+<script src="{{ url_for('static', filename='js/card_referencia.js') }}"></script>
 <script src="{{ url_for('static', filename='js/segmentacion.js') }}"></script>
 
 {% endblock %}

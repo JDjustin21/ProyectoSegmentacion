@@ -19,6 +19,13 @@ import io
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 
+import os
+import re
+import time
+import unicodedata
+from pathlib import Path
+from flask import current_app, request, abort, send_from_directory
+
 from config.settings import (
     SQLSERVER_API_URL,
     SEGMENTACION_CARDS_PER_PAGE,
@@ -141,6 +148,97 @@ def api_guardar_segmentacion():
 
     result = svc.guardar_segmentacion(payload)
     return jsonify(result)
+
+
+_IMAGES_INDEX = {
+    "ts": 0.0,
+    "by_key": {}  # key_normalizada -> filename_real
+}
+
+_ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def _strip_accents(text: str) -> str:
+    # convierte áéíóú -> aeiou (y similares)
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join([c for c in nfkd if not unicodedata.combining(c)])
+
+
+def normalizar_referencia(raw: str) -> str:
+    """
+    Normaliza una referencia tipo:
+    "105174-00 | 628" -> "10517400628"
+    """
+    v = (raw or "").strip().upper()
+    v = _strip_accents(v)
+    # deja solo letras y números
+    v = re.sub(r"[^A-Z0-9]+", "", v)
+    return v
+
+def _images_dir() -> Path:
+    # usa el static_folder real de Flask (sin adivinar rutas)
+    return Path(current_app.static_folder) / "assets" / "images" / "referencias"
+
+
+def _rebuild_index_if_needed(force: bool = False, ttl_seconds: int = 60) -> None:
+    """
+    Reconstruye el índice cada 'ttl_seconds' o si force=True.
+    Esto evita escanear la carpeta miles de veces al cargar muchas cards.
+    """
+    now = time.time()
+    if not force and (now - float(_IMAGES_INDEX["ts"])) < ttl_seconds:
+        return
+
+    img_dir = _images_dir()
+    by_key = {}
+
+    if img_dir.exists():
+        for p in img_dir.iterdir():
+            if not p.is_file():
+                continue
+            ext = p.suffix.lower()
+            if ext not in _ALLOWED_EXTS:
+                continue
+
+            key = normalizar_referencia(p.stem)  # nombre sin extensión
+            if not key:
+                continue
+
+            # si hay duplicados (misma key con diferentes ext),
+            # nos quedamos con el primero que aparezca (MVP).
+            if key not in by_key:
+                by_key[key] = p.name
+
+    _IMAGES_INDEX["by_key"] = by_key
+    _IMAGES_INDEX["ts"] = now
+
+
+@segmentacion_bp.get("/api/imagenes/referencia")
+def api_imagen_por_referencia():
+    """
+    Devuelve la imagen asociada a una referencia.
+    - GET /segmentacion/api/imagenes/referencia?ref=105174-00%20%7C%20628
+    """
+    ref = (request.args.get("ref") or "").strip()
+    if not ref:
+        abort(400, description="Falta parámetro 'ref'.")
+
+    key = normalizar_referencia(ref)
+    if not key:
+        abort(400, description="Referencia inválida.")
+
+    _rebuild_index_if_needed(force=False, ttl_seconds=60)
+
+    filename = _IMAGES_INDEX["by_key"].get(key)
+    if not filename:
+        # no hay imagen: devolvemos 404 para que el frontend use onerror->placeholder
+        abort(404)
+
+    img_dir = _images_dir()
+    if not img_dir.exists():
+        abort(404)
+
+    return send_from_directory(img_dir, filename)
 
 
 @segmentacion_bp.get("/api/export/csv")

@@ -13,6 +13,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const imagesBaseUrl = (cardsContainer?.dataset.imagesBaseUrl || "").trim();
   const placeholderUrl = (cardsContainer?.dataset.placeholderUrl || "https://via.placeholder.com/120x120?text=IMG").trim();
 
+  const imageResolverUrl = (cardsContainer?.dataset.imageResolverUrl || "").trim();
+
+  if (!imageResolverUrl) {
+    throw new Error("Falta configuración: data-image-resolver-url en #cards-container");
+  }
   // Config de tallas (fallbacks)
   const defaultTallasMvp = (cardsContainer?.dataset.defaultTallasMvp || "").trim();       // Ej: "XS,S,M,L,XL,XXL"
   const lineasTallasFijasRaw = (cardsContainer?.dataset.lineasTallasFijas || "").trim();  // Ej: "Dama Exterior;Dama Deportivo;..."
@@ -254,73 +259,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // 10) Render cards (solo página actual)
   // =========================================================
-  function crearCardHTML(ref) {
-    const referencia = norm(ref.referencia);
-    const categoria = norm(ref.categoria);
-    const estado = norm(ref.estado);
-    const linea = norm(ref.linea);
-    const cuento = norm(ref.cuento);
-
-    const descripcion = norm(ref.descripcion);
-    const portafolio = norm(ref.tipoPortafolio);
-    const color = norm(ref.color);
-    const codigoColor = norm(ref.codigoColor);
-
-    const cantidadTallas = Number(ref.cantidadTallas || 0);
-    const tallas = norm(ref.tallas);
-
-    const estadoLower = estado.toLowerCase();
-    let badgeClass = "bg-secondary";
-    let badgeTextClass = "";
-
-    if (estadoLower === "activo") {
-      badgeClass = "bg-success";
-    } else if (estadoLower === "inactivo") {
-      badgeClass = "bg-danger";
-    } else if (estadoLower === "moda") {
-      badgeClass = "bg-warning";
-      badgeTextClass = "text-dark";
-    }
-
-    const imgUrl = `${imagesBaseUrl}/${encodeURIComponent(referencia)}`;
-
-    return `
-      <div class="product-card reference-card"
-        data-referencia="${referencia}"
-        data-descripcion="${descripcion}"
-        data-categoria="${categoria}"
-        data-estado="${estado}"
-        data-portafolio="${portafolio}"
-        data-linea="${linea}"
-        data-color="${color}"
-        data-codigocolor="${codigoColor}"
-        data-cantidadtallas="${cantidadTallas}"
-        data-tallas="${tallas}"
-        data-cuento="${cuento}"
-      >
-        <div class="product-image">
-          <img
-            src="${imgUrl}"
-            alt="Imagen referencia"
-            onerror="this.onerror=null;this.src='${placeholderUrl}';">
-        </div>
-
-        <div class="product-info">
-
-          <div class="product-info-head">
-            <div class="product-ref">${referencia}</div>
-            <span class="badge ${badgeClass} ${badgeTextClass}">${estado || "—"}</span>
-          </div>
-
-          <div class="product-meta">
-            <div><b>Categoría:</b> ${categoria || "—"}</div>
-            <div><b>Línea:</b> ${linea || "—"}</div>
-            <div><b>Cuento:</b> ${cuento || "—"}</div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
 
   function render() {
     const filtradas = aplicarFiltros();
@@ -330,7 +268,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const visibles = filtradas.slice((currentPage - 1) * cardsPerPage, currentPage * cardsPerPage);
 
-    cardsContainer.innerHTML = visibles.map(crearCardHTML).join("");
+    const cardConfig = { imageResolverUrl, placeholderUrl };
+    cardsContainer.innerHTML = visibles
+      .map(r => window.CardReferencia.crearCardHTML(r, cardConfig))
+      .join("");
+
 
     if (pageIndicator) pageIndicator.textContent = `Página ${currentPage} de ${totalPages}`;
     if (prevBtn) prevBtn.disabled = currentPage === 1;

@@ -156,6 +156,8 @@
       modalEl: document.getElementById("modalDetalleReferencia"),
       tituloEl: document.getElementById("detalleRefTitulo"),
       subtituloEl: document.getElementById("detalleRefSubtitulo"),
+      imgEl: document.getElementById("detalleImg"),
+      imgMsgEl: document.getElementById("detalleImgMsg"),
       rankingLineaEl: document.getElementById("detalleRankingLinea"),
       footerInfoEl: document.getElementById("detalleFooterInfo"),
 
@@ -575,7 +577,40 @@
     dom.tituloEl.textContent = state.ref.referenciaSku || "Detalle de referencia";
     dom.subtituloEl.textContent = `${state.ref.descripcion} • ${state.ref.categoria} • ${state.ref.lineaTexto || state.ref.lineaRaw || "Sin línea"}`;
 
-    
+    // =========================
+    // Imagen del SKU en el modal (igual que en las cards)
+    // =========================
+    const cardsContainer = document.getElementById("cards-container");
+    const placeholderUrl = (cardsContainer?.dataset.placeholderUrl || "https://via.placeholder.com/120x120?text=IMG").trim();
+
+    const refForImg = state.ref.referenciaSku;
+    const imgUrl = `/segmentacion/api/imagenes/referencia?ref=${encodeURIComponent(refForImg)}`;
+
+    if (dom.imgMsgEl) {
+      dom.imgMsgEl.style.display = "none";
+      dom.imgMsgEl.textContent = "";
+    }
+
+    if (dom.imgEl) {
+      dom.imgEl.onload = () => {
+        if (dom.imgMsgEl) {
+          dom.imgMsgEl.style.display = "none";
+          dom.imgMsgEl.textContent = "";
+        }
+      };
+
+      dom.imgEl.onerror = () => {
+        dom.imgEl.src = placeholderUrl;
+
+        if (dom.imgMsgEl) {
+          dom.imgMsgEl.textContent = `Falta subir imagen para: ${refForImg}`;
+          dom.imgMsgEl.style.display = "block";
+        }
+      };
+
+      dom.imgEl.src = imgUrl;
+    }
+
     if (dom.rankingLineaEl) dom.rankingLineaEl.textContent = "—";
 
     // Mostrar modal
