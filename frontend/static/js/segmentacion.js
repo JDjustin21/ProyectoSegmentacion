@@ -124,9 +124,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const btnLimpiar = document.getElementById("btnLimpiar");
 
-  const btnExportHoyGlobal = document.getElementById("btnExportHoyGlobal");
-  const btnExportSesionGlobal = document.getElementById("btnExportSesionGlobal");
-
   // “inicio de sesión” de la página (para exportar por rango desde que abriste la pantalla)
   const pageSessionStartIso = new Date().toISOString();
 
@@ -259,10 +256,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   function crearCardHTML(ref) {
     const referencia = norm(ref.referencia);
-    const descripcion = norm(ref.descripcion);
     const categoria = norm(ref.categoria);
     const estado = norm(ref.estado);
+    const linea = norm(ref.linea);
     const cuento = norm(ref.cuento);
+
+    const descripcion = norm(ref.descripcion);
+    const portafolio = norm(ref.tipoPortafolio);
+    const color = norm(ref.color);
+    const codigoColor = norm(ref.codigoColor);
+
+    const cantidadTallas = Number(ref.cantidadTallas || 0);
+    const tallas = norm(ref.tallas);
 
     const estadoLower = estado.toLowerCase();
     let badgeClass = "bg-secondary";
@@ -277,18 +282,10 @@ document.addEventListener("DOMContentLoaded", () => {
       badgeTextClass = "text-dark";
     }
 
-    const portafolio = norm(ref.tipoPortafolio);
-    const linea = norm(ref.linea);
-    const color = norm(ref.color);
-    const codigoColor = norm(ref.codigoColor);
-
-    const cantidadTallas = Number(ref.cantidadTallas || 0);
-    const tallas = norm(ref.tallas);
-
     const imgUrl = `${imagesBaseUrl}/${encodeURIComponent(referencia)}`;
 
     return `
-      <div class="card mb-3 shadow-sm reference-card"
+      <div class="product-card reference-card"
         data-referencia="${referencia}"
         data-descripcion="${descripcion}"
         data-categoria="${categoria}"
@@ -299,41 +296,26 @@ document.addEventListener("DOMContentLoaded", () => {
         data-codigocolor="${codigoColor}"
         data-cantidadtallas="${cantidadTallas}"
         data-tallas="${tallas}"
+        data-cuento="${cuento}"
       >
-        <div class="row g-0 align-items-center">
-          <div class="col-md-2 text-center p-2">
-            <img
-              src="${imgUrl}"
-              class="img-fluid rounded"
-              alt="Imagen referencia"
-              onerror="this.onerror=null;this.src='${placeholderUrl}';">
+        <div class="product-image">
+          <img
+            src="${imgUrl}"
+            alt="Imagen referencia"
+            onerror="this.onerror=null;this.src='${placeholderUrl}';">
+        </div>
+
+        <div class="product-info">
+
+          <div class="product-info-head">
+            <div class="product-ref">${referencia}</div>
+            <span class="badge ${badgeClass} ${badgeTextClass}">${estado || "—"}</span>
           </div>
 
-          <div class="col-md-4">
-            <div class="card-body py-2">
-              <h6 class="fw-bold mb-1">${referencia}</h6>
-              <p class="mb-1 small text-muted">${descripcion}</p>
-              <p class="mb-1 small"><strong>Categoría:</strong> ${categoria}</p>
-              <span class="badge ${badgeClass} ${badgeTextClass}">${estado}</span>
-            </div>
-          </div>
-
-          <div class="col-md-3">
-            <div class="card-body py-2 border-start">
-              <p class="mb-1 small"><strong>Portafolio:</strong> ${portafolio}</p>
-              <p class="mb-1 small"><strong>Línea:</strong> ${linea}</p>
-              <p class="mb-1 small"><strong>Color:</strong> ${color}</p>
-              <p class="mb-1 small"><strong>Cuento:</strong> ${cuento}</p>
-            </div>
-          </div>
-
-          <div class="col-md-3">
-            <div class="card-body py-2 border-start">
-              <p class="mb-1 small"><strong>Promedio Ventas:</strong> —</p>
-              <p class="mb-1 small"><strong>CPD:</strong> —</p>
-              <p class="mb-1 small"><strong>% Retorno:</strong> —</p>
-              <p class="mb-0 small"><strong>Tiendas Activas:</strong> —</p>
-            </div>
+          <div class="product-meta">
+            <div><b>Categoría:</b> ${categoria || "—"}</div>
+            <div><b>Línea:</b> ${linea || "—"}</div>
+            <div><b>Cuento:</b> ${cuento || "—"}</div>
           </div>
         </div>
       </div>
@@ -446,9 +428,15 @@ document.addEventListener("DOMContentLoaded", () => {
     window.location.href = `/segmentacion/api/export/csv?${buildQuery({ desde, hasta })}`;
   }
 
-  btnExportHoyGlobal?.addEventListener("click", exportHoyGlobal);
-  btnExportSesionGlobal?.addEventListener("click", exportSesionGlobal);
-
+  document.addEventListener("DOMContentLoaded", () => {
+  const btnExportAll = document.getElementById("btnExportAllGlobal");
+  if (btnExportAll) {
+    btnExportAll.addEventListener("click", () => {
+      // Exporta TODO lo guardado (Postgres)
+      window.location.href = "/segmentacion/api/segmentaciones/export/excel";
+    });
+  }
+});
   
   // =========================================================
   // 12) Paginación
@@ -466,6 +454,10 @@ document.addEventListener("DOMContentLoaded", () => {
       render();
     }
   });
+
+  document.getElementById("btnExportSegmentaciones")?.addEventListener("click", () => {
+  window.location.href = "/segmentacion/api/export/csv";
+});
 
   // =========================================================
   // 13) Doble click (MVP: resolver tallas finales)

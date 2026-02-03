@@ -154,40 +154,43 @@ def api_export_csv():
     - ?desde=ISO&hasta=ISO -> exporta rango exacto
     Default: hoy (America/Bogota)
     """
-    tz = ZoneInfo("America/Bogota")
-
-    fecha_str = (request.args.get("fecha") or "").strip()
-    desde_str = (request.args.get("desde") or "").strip()
-    hasta_str = (request.args.get("hasta") or "").strip()
-
-    if desde_str and hasta_str:
-        # Rango explícito (cliente define "en este momento")
-        desde = datetime.fromisoformat(desde_str).astimezone(tz)
-        hasta = datetime.fromisoformat(hasta_str).astimezone(tz)
-    else:
-        # Día completo (por defecto hoy)
-        if fecha_str:
-            f = date.fromisoformat(fecha_str)
-        else:
-            f = datetime.now(tz).date()
-
-        desde = datetime(f.year, f.month, f.day, 0, 0, 0, tzinfo=tz)
-        hasta = desde + timedelta(days=1)
-
     repo = PostgresRepository(POSTGRES_DSN)
     svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
 
-    rows = svc.export_dataset_por_rango(desde, hasta)
+    rows = svc.export_dataset_todas()
 
-    # Construcción CSV en memoria (UTF-8)
     headers = [
-        "fecha_actualizacion", "id_segmentacion",
-        "referenciaSku", "descripcion", "categoria", "linea",
-        "tipo_portafolio", "estado_sku", "cuento",
-        "llave_naval", "cod_bodega", "cod_dependencia", "dependencia",
-        "desc_dependencia", "rankin_linea", "testeo",
-        "ciudad", "zona", "clima",
-        "talla", "cantidad"
+        "fecha_actualizacion",
+        "id_segmentacion",
+        "fecha_creacion",
+        "id_usuario",
+        "id_version_tiendas",
+        "estado_segmentacion",
+
+        "referenciaSku",
+        "codigo_barras",
+        "descripcion",
+        "categoria",
+        "linea",
+        "tipo_portafolio",
+        "estado_sku",
+        "cuento",
+        "tipo_inventario",
+
+        "llave_naval",
+        "talla",
+        "cantidad",
+        "estado_detalle",
+
+        "cod_bodega",
+        "cod_dependencia",
+        "dependencia",
+        "desc_dependencia",
+        "ciudad",
+        "zona",
+        "clima",
+        "rankin_linea",
+        "testeo"
     ]
 
     sio = io.StringIO()
@@ -198,29 +201,40 @@ def api_export_csv():
         writer.writerow({
             "fecha_actualizacion": r.get("fecha_actualizacion"),
             "id_segmentacion": r.get("id_segmentacion"),
+            "fecha_creacion": r.get("fecha_creacion"),
+            "id_usuario": r.get("id_usuario"),
+            "id_version_tiendas": r.get("id_version_tiendas"),
+            "estado_segmentacion": r.get("estado_segmentacion"),
+
             "referenciaSku": r.get("referencia"),
+            "codigo_barras": r.get("codigo_barras"),
             "descripcion": r.get("descripcion"),
             "categoria": r.get("categoria"),
             "linea": r.get("linea"),
             "tipo_portafolio": r.get("tipo_portafolio"),
             "estado_sku": r.get("estado_sku"),
             "cuento": r.get("cuento"),
+            "tipo_inventario": r.get("tipo_inventario"),
+
             "llave_naval": r.get("llave_naval"),
+            "talla": r.get("talla"),
+            "cantidad": r.get("cantidad"),
+            "estado_detalle": r.get("estado_detalle"),
+
             "cod_bodega": r.get("cod_bodega"),
             "cod_dependencia": r.get("cod_dependencia"),
             "dependencia": r.get("dependencia"),
             "desc_dependencia": r.get("desc_dependencia"),
-            "rankin_linea": r.get("rankin_linea"),
-            "testeo": r.get("testeo"),
             "ciudad": r.get("ciudad"),
             "zona": r.get("zona"),
             "clima": r.get("clima"),
-            "talla": r.get("talla"),
-            "cantidad": r.get("cantidad"),
+            "rankin_linea": r.get("rankin_linea"),
+            "testeo": r.get("testeo"),
         })
 
-    data_bytes = sio.getvalue().encode("utf-8")
+    # Tip: utf-8-sig ayuda a Excel a abrir acentos bien (BOM)
+    data_bytes = sio.getvalue().encode("utf-8-sig")
     file_obj = io.BytesIO(data_bytes)
 
-    filename = f"segmentacion_{desde.date().isoformat()}.csv"
+    filename = f"segmentaciones_todas_{datetime.now(ZoneInfo('America/Bogota')).date().isoformat()}.csv"
     return send_file(file_obj, as_attachment=True, download_name=filename, mimetype="text/csv")

@@ -38,6 +38,12 @@ class PostgresRepository:
                 cur.execute(sql, params or {})
                 row = cur.fetchone()
                 return dict(row) if row else None
+    
+    def execute(self, sql: str, params: Optional[Dict[str, Any]] = None) -> None:
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or {})
+                conn.commit()
 
     def execute_returning_id(self, sql: str, params: Dict[str, Any], id_field: str) -> int:
         with self._conn() as conn:

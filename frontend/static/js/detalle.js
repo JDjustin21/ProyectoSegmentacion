@@ -98,6 +98,55 @@
     setDatalistOptions(listTesteo, arr.map(t => t.testeo || t.testeo_fnl));
     setDatalistOptions(listClasif, arr.map(t => t.rankin_linea));
   }
+  function updateFooterStats(dom) {
+    const tiendas = Array.isArray(state.tiendas) ? state.tiendas : [];
+    const tallas = Array.isArray(state.ref.tallasFinal) ? state.ref.tallasFinal : [];
+
+    // Tiendas activas: toggles en ON dentro de la lista actual
+    let activas = 0;
+
+    // “Unidades asignadas” según tu definición nueva:
+    // = cuántas tiendas están “segmentadas” en ese momento
+    // = activas y con al menos una talla > 0
+    let segmentadas = 0;
+
+    tiendas.forEach(t => {
+      const llave = norm(t.llave_naval);
+      if (!llave) return;
+
+      if (isStoreActive(llave)) {
+        activas += 1;
+
+        const byTalla = state.cantidades?.[llave] || {};
+        const total = tallas.reduce((sum, talla) => {
+          const k = norm(talla);
+          return sum + Number(byTalla?.[k] || 0);
+        }, 0);
+
+        if (total > 0) segmentadas += 1;
+      }
+    });
+
+    if (dom.tiendasActivasNumEl) dom.tiendasActivasNumEl.textContent = String(activas);
+    if (dom.tiendasSegmentadasNumEl) dom.tiendasSegmentadasNumEl.textContent = String(segmentadas);
+  }
+
+  function perfilClass(rankinLinea) {
+    const r = norm(rankinLinea).toUpperCase();
+
+    // AA y A = verde
+    if (r === "AA" || r === "A") return "perfil-green";
+
+    // B = amarillo
+    if (r === "B") return "perfil-yellow";
+
+    // C o NA (o cualquier cosa rara) = rojo
+    if (r === "C" || r === "NA" || r === "N/A") return "perfil-red";
+
+    // Por defecto (si viene vacío) lo tratamos como rojo también
+    return "perfil-red";
+  }
+
 
   // =========================
   // 3) DOM del modal
@@ -110,6 +159,10 @@
       rankingLineaEl: document.getElementById("detalleRankingLinea"),
       footerInfoEl: document.getElementById("detalleFooterInfo"),
 
+      tiendasActivasNumEl: document.getElementById("detalleTiendasActivasNum"),
+      tiendasSegmentadasNumEl: document.getElementById("detalleTiendasSegmentadasNum"),
+      btnCancelar: document.getElementById("btnDetalleCancelar"),
+
       filtroDependencia: document.getElementById("detalleFiltroDependencia"),
       filtroZona: document.getElementById("detalleFiltroZona"),
       filtroClima: document.getElementById("detalleFiltroClima"),
@@ -118,6 +171,8 @@
 
       btnLimpiar: document.getElementById("btnDetalleLimpiar"),
       btnPresetSku: document.getElementById("btnDetallePresetSku"),
+      btnActivarTodas: document.getElementById("btnDetalleActivarTodas"),
+      btnDesactivarTodas: document.getElementById("btnDetalleDesactivarTodas"),
       btnGuardar: document.getElementById("btnDetalleGuardar"),
 
       loadingEl: document.getElementById("detalleLoading"),
@@ -151,6 +206,7 @@
 
     tiendas: [],
     cantidades: {},
+    activoPorTienda: {},
   };
 
   // =========================
@@ -166,6 +222,14 @@
     dom.errorEl.style.display = message ? "block" : "none";
     dom.errorEl.textContent = message || "";
   }
+
+  function badgeClassForEstado(estado) {
+  const e = norm(estado).toLowerCase();
+  if (e === "activo") return "bg-success";
+  if (e === "inactivo") return "bg-danger";
+  if (e === "moda") return "bg-warning text-dark";
+  return "bg-secondary";
+}
 
   // =========================
   // 6) Render: tiendas + tallas
@@ -184,6 +248,16 @@
       return;
     }
 
+    const headerHtml = `
+      <div class="detalle-row-5 detalle-row-head">
+        <div class="detalle-col">Tienda</div>
+        <div class="detalle-col">Perfil</div>
+        <div class="detalle-col">Activo</div>
+        <div class="detalle-col">Tallas</div>
+        <div class="detalle-col">Rotación Hist.</div>
+      </div>
+    `;
+
     const html = tiendas.map(t => {
       const llave = norm(t.llave_naval);
       const nombreTienda = norm(t.desc_dependencia) || norm(t.dependencia);
@@ -200,88 +274,76 @@
 
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
 
+      const isActive = isStoreActive(llave);
+
       const tallasHtml = tallas.map(talla => {
         const keyTalla = norm(talla);
         const qty = Number(state.cantidades[llave][keyTalla] || 0);
 
+        const disabledAttr = isActive ? "" : "disabled";
+        const disabledClass = isActive ? "" : "is-disabled";
+
         return `
-          <div class="detalle-talla-col">
+          <div class="detalle-talla-col ${disabledClass}">
             <div class="detalle-talla-label">${keyTalla}</div>
 
-            <button type="button"
-              class="btn btn-sm btn-outline-light btn-qty"
-              data-action="plus"
-              data-llave="${llave}"
-              data-talla="${keyTalla}">+</button>
-
-            <input class="form-control form-control-sm detalle-qty-box"
+            <input
+              type="number"
+              min="0"
+              step="1"
+              class="form-control form-control-sm detalle-qty-box"
               value="${qty}"
-              readonly
               data-llave="${llave}"
-              data-talla="${keyTalla}" />
-
-            <button type="button"
-              class="btn btn-sm btn-outline-light btn-qty"
-              data-action="minus"
-              data-llave="${llave}"
-              data-talla="${keyTalla}">-</button>
+              data-talla="${keyTalla}"
+              ${isActive ? "" : "disabled"}
+            />
           </div>
         `;
+
       }).join("");
 
       return `
-        <div class="detalle-row">
-          <div class="detalle-row-left">
+        <div class="detalle-row-5">
+          <!-- 1) Tienda -->
+          <div class="detalle-col">
             <div class="dep">${nombreTienda}</div>
             <div class="meta">${ciudad} / ${zona} / ${clima}</div>
-            <div class="small">Rankin_linea: ${rankinLinea || "—"} • Testeo: ${testeoFnl || "—"}</div>
-            <div class="small">Llave: ${llave}</div>
+            <div class="small">Testeo: ${testeoFnl || "—"}</div>
           </div>
 
-          <div class="detalle-row-mid">
-            <div>Venta Promedio: ${ventaProm}</div>
-            <div>CPD: ${cpd}</div>
-            <div>% Rotación: ${rot}</div>
+          <!-- 2) Rankin -->
+          <div class="detalle-col">
+            <span class="perfil-badge ${perfilClass(rankinLinea)}">
+              ${(rankinLinea || "NA").toUpperCase()}
+            </span>
           </div>
 
-          <div class="detalle-tallas">
-            ${tallasHtml}
+          <!-- 3) Activo -->
+          <div class="detalle-col detalle-col-activo">
+            <div class="active-toggle ${isActive ? "active" : ""}"
+                data-llave="${llave}"
+                title="${isActive ? "Activo" : "Inactivo"}"></div>
+          </div>
+
+          <!-- 4) Tallas -->
+          <div class="detalle-col tallas">
+            <div class="detalle-tallas">
+              ${tallasHtml}
+            </div>
+          </div>
+
+          <!-- 5) Rotación (placeholder por ahora) -->
+          <div class="detalle-col">
+            <div class="small">Índice: ${rot}</div>
+            <div class="small">Venta Promedio: ${ventaProm}</div>
+            <div class="small">CPD: ${cpd}</div>
           </div>
         </div>
       `;
     }).join("");
 
-    dom.tiendasContainer.innerHTML = html;
-  }
-
-  // =========================
-  // 7) Acciones: +/- (delegación)
-  // =========================
-  function attachDelegatedQtyHandler(dom) {
-    dom.tiendasContainer.addEventListener("click", (ev) => {
-      const btn = ev.target.closest(".btn-qty");
-      if (!btn) return;
-
-      const action = norm(btn.dataset.action);
-      const llave = norm(btn.dataset.llave);
-      const talla = norm(btn.dataset.talla);
-
-      if (!llave || !talla) return;
-
-      const current = Number(state.cantidades?.[llave]?.[talla] || 0);
-
-      let next = current;
-      if (action === "plus") next = current + 1;
-      if (action === "minus") next = Math.max(0, current - 1);
-
-      if (!state.cantidades[llave]) state.cantidades[llave] = {};
-      state.cantidades[llave][talla] = next;
-
-      const input = dom.tiendasContainer.querySelector(
-        `input[data-llave="${llave}"][data-talla="${talla}"]`
-      );
-      if (input) input.value = String(next);
-    });
+    dom.tiendasContainer.innerHTML = headerHtml + html;
+    updateFooterStats(dom);
   }
 
   // =========================
@@ -351,6 +413,7 @@
       if (!llave || !talla) return;
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
       state.cantidades[llave][talla] = cantidad;
+      if (cantidad > 0) state.activoPorTienda[llave] = true;
     });
   }
 
@@ -379,11 +442,45 @@
 
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
 
+      let anyPositive = false;
+
       state.ref.tallasFinal.forEach(talla => {
         const keyTalla = norm(talla);
         const qty = Number(preset[keyTalla] || 0);
         state.cantidades[llave][keyTalla] = qty;
+        if (qty > 0) anyPositive = true;
       });
+
+      // si el preset asigna algo, activamos la tienda
+      if (anyPositive) state.activoPorTienda[llave] = true;
+    });
+  }
+
+  function isStoreActive(llave) {
+    return state.activoPorTienda[llave] === true;
+  }
+
+  function setStoreActive(llave, active, { clearQty } = { clearQty: false }) {
+    if (!llave) return;
+
+    state.activoPorTienda[llave] = !!active;
+
+    if (!active && clearQty) {
+      if (!state.cantidades[llave]) state.cantidades[llave] = {};
+      state.ref.tallasFinal.forEach(t => {
+        const talla = norm(t);
+        if (!talla) return;
+        state.cantidades[llave][talla] = 0;
+      });
+    }
+  }
+
+  function setAllStoresActive(active, { clearQty } = { clearQty: false }) {
+    const tiendas = Array.isArray(state.tiendas) ? state.tiendas : [];
+    tiendas.forEach(t => {
+      const llave = norm(t.llave_naval);
+      if (!llave) return;
+      setStoreActive(llave, active, { clearQty });
     });
   }
 
@@ -395,7 +492,7 @@
       referenciaSku: state.ref.referenciaSku,
       descripcion: state.ref.descripcion,
       categoria: state.ref.categoria,
-      linea: state.ref.lineaRaw,               // importante: backend guarda linea como viene
+      linea: state.ref.lineaRaw,               
       tipo_portafolio: state.ref.tipoPortafolio,
       estado_sku: state.ref.estado,
       cuento: state.ref.cuento,
@@ -405,6 +502,8 @@
 
     const detalle = [];
     Object.entries(state.cantidades).forEach(([llave_naval, byTalla]) => {
+      if (!isStoreActive(llave_naval)) return;
+
       Object.entries(byTalla || {}).forEach(([talla, cantidad]) => {
         const qty = Number(cantidad || 0);
         if (qty > 0) detalle.push({ llave_naval, talla, cantidad: qty });
@@ -469,11 +568,14 @@
     // Reset modal
     state.tiendas = [];
     state.cantidades = {};
+    state.activoPorTienda = {};
+
 
     // Header
     dom.tituloEl.textContent = state.ref.referenciaSku || "Detalle de referencia";
     dom.subtituloEl.textContent = `${state.ref.descripcion} • ${state.ref.categoria} • ${state.ref.lineaTexto || state.ref.lineaRaw || "Sin línea"}`;
-    dom.footerInfoEl.textContent = `Tallas: ${state.ref.tallasFinal.join(", ")}`;
+
+    
     if (dom.rankingLineaEl) dom.rankingLineaEl.textContent = "—";
 
     // Mostrar modal
@@ -512,7 +614,20 @@
     const dom = getDom();
     if (!dom.modalEl) return;
 
-    attachDelegatedQtyHandler(dom);
+    dom.tiendasContainer.addEventListener("click", (ev) => {
+      const toggle = ev.target.closest(".active-toggle");
+      if (!toggle) return;
+
+      const llave = norm(toggle.dataset.llave);
+      if (!llave) return;
+
+      const willBeActive = !isStoreActive(llave);
+
+      // Si se apaga, limpiamos cantidades
+      setStoreActive(llave, willBeActive, { clearQty: !willBeActive });
+
+      renderTiendas(dom);
+    });
 
     const refetch = async () => {
       const mySeq = ++state.fetchSeq;
@@ -544,6 +659,65 @@
     dom.filtroTesteo?.addEventListener("input", refetchDebounced);
     dom.filtroClasificacion?.addEventListener("input", refetchDebounced);
 
+    dom.tiendasContainer.addEventListener("focusin", (ev) => {
+      const input = ev.target.closest(".detalle-qty-box");
+      if (!input) return;
+      try { input.select(); } catch {}
+    });
+    dom.tiendasContainer.addEventListener("input", (ev) => {
+      const input = ev.target.closest(".detalle-qty-box");
+      if (!input) return;
+
+      const llave = norm(input.dataset.llave);
+      const talla = norm(input.dataset.talla);
+      if (!llave || !talla) return;
+
+      // Si la tienda está apagada, ignoramos (por seguridad)
+      if (!isStoreActive(llave)) return;
+
+      // Convertimos a entero >= 0
+      const raw = (input.value ?? "").toString().trim();
+      let qty = parseInt(raw, 10);
+      if (Number.isNaN(qty)) qty = 0;
+      if (qty < 0) qty = 0;
+
+      // Inicializamos si no existe
+      if (!state.cantidades[llave]) state.cantidades[llave] = {};
+      state.cantidades[llave][talla] = qty;
+
+      // Actualiza los KPIs del footer en tiempo real
+      updateFooterStats(dom);
+    });
+    dom.tiendasContainer.addEventListener("blur", (ev) => {
+      const input = ev.target.closest(".detalle-qty-box");
+      if (!input) return;
+
+      const raw = (input.value ?? "").toString().trim();
+      if (raw === "") input.value = "0";
+    }, true);
+    dom.tiendasContainer.addEventListener("keydown", (ev) => {
+      const input = ev.target.closest(".detalle-qty-box");
+      if (!input) return;
+
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+
+        // Lista de inputs habilitados en el modal (en el orden del DOM)
+        const inputs = Array.from(dom.tiendasContainer.querySelectorAll(".detalle-qty-box:not([disabled])"));
+        const idx = inputs.indexOf(input);
+
+        if (idx >= 0 && idx < inputs.length - 1) {
+          inputs[idx + 1].focus();
+          inputs[idx + 1].select?.();
+        }
+      }
+    });
+
+    dom.btnCancelar?.addEventListener("click", () => {
+      const modal = bootstrap.Modal.getInstance(dom.modalEl) || bootstrap.Modal.getOrCreateInstance(dom.modalEl);
+      modal.hide();
+    });
+
     // Limpiar = limpia filtros + cantidades + recarga
     dom.btnLimpiar?.addEventListener("click", async () => {
       limpiarFiltros(dom);
@@ -553,6 +727,16 @@
 
     dom.btnPresetSku?.addEventListener("click", () => {
       aplicarPresetDesdeSku();
+      renderTiendas(dom);
+    });
+
+    dom.btnActivarTodas?.addEventListener("click", () => {
+      setAllStoresActive(true);
+      renderTiendas(dom);
+    });
+
+    dom.btnDesactivarTodas?.addEventListener("click", () => {
+      setAllStoresActive(false, { clearQty: true });
       renderTiendas(dom);
     });
 

@@ -7,7 +7,7 @@
   <!-- ============================= -->
   <!-- BARRA DE FILTROS -->
   <!-- ============================= -->
-  <div class="card mb-4">
+  <div class="card mb-4 filters-card">
     <div class="card-body">
 
       <form class="row g-3 align-items-end">
@@ -23,7 +23,7 @@
       </div>
 
         <!-- Línea Comercial -->
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">Línea Comercial</label>
         <select id="filtroLinea" class="form-select">
           <option value="">Todas</option>
@@ -49,7 +49,7 @@
       </div>
 
         <!-- Categoría -->
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">Categoría</label>
        <input
         id="filtroCategoria"
@@ -71,13 +71,9 @@
       </div>
 
         <!-- Botón -->
-      <div class="col-md-4 ms-auto d-flex justify-content-end align-items-end gap-2">
-        <button type="button" id="btnExportHoyGlobal" class="btn btn-outline-dark px-4">
-          Exportar hoy
-        </button>
-
-        <button type="button" id="btnExportSesionGlobal" class="btn btn-outline-dark px-4">
-          Exp.sesión
+      <div class="col-md-4 ms-auto filters-actions align-items-end">
+        <button type="button" id="btnExportSegmentaciones" class="btn btn-primary px-4">
+          Exportar segmentaciones
         </button>
 
         <button type="button" id="btnLimpiar" class="btn btn-outline-secondary px-4">
@@ -95,23 +91,24 @@
   <!-- ============================= -->
   <div>
     <div
-  id="cards-container"
-  data-cards-per-page="{{ cards_per_page }}"
-  data-images-base-url="{{ images_base_url }}"
-  data-placeholder-url="https://via.placeholder.com/120x120?text=IMG"
-  data-default-tallas-mvp="{{ default_tallas_mvp }}"
-  data-lineas-tallas-fijas="{{ lineas_tallas_fijas }}"> 
-  
-    {% for ref in referencias %}
+      id="cards-container"
+      class="products-grid"
+      data-cards-per-page="{{ cards_per_page }}"
+      data-images-base-url="{{ images_base_url }}"
+      data-placeholder-url="https://via.placeholder.com/120x120?text=IMG"
+      data-default-tallas-mvp="{{ default_tallas_mvp }}"
+      data-lineas-tallas-fijas="{{ lineas_tallas_fijas }}"> 
+      
+        {% for ref in referencias %}
 
-    <div class="card mb-3 shadow-sm reference-card"
-     data-portafolio="{{ ref.tipoPortafolio }}"
-     data-linea="{{ ref.linea }}"
-     data-estado="{{ ref.estado }}"
-     data-categoria="{{ ref.categoria }}"
-     data-referencia="{{ ref.referencia }}">
+        <div class="card mb-3 shadow-sm reference-card"
+        data-portafolio="{{ ref.tipoPortafolio }}"
+        data-linea="{{ ref.linea }}"
+        data-estado="{{ ref.estado }}"
+        data-categoria="{{ ref.categoria }}"
+        data-referencia="{{ ref.referencia }}">
 
-      <div class="row g-0 align-items-center">
+          <div class="row g-0 align-items-center">
 
         <!-- Imagen -->
         <div class="col-md-2 text-center p-2">
@@ -237,11 +234,6 @@
         </div>
 
         <div class="detalle-header-right">
-          <div class="detalle-metricas">
-            <div class="detalle-metricas-title">Métricas</div>
-            <div class="detalle-metricas-value" id="detalleRankingLinea">Rankin_linea</div>
-          </div>
-
           <button type="button" class="detalle-close" data-bs-dismiss="modal" aria-label="Cerrar">X</button>
         </div>
       </div>
@@ -269,18 +261,28 @@
         </div>
 
         <div class="detalle-filtro">
-          <label>Clasificación (Rankin_linea)</label>
+          <label>Clasificación</label>
           <input id="detalleFiltroClasificacion" class="form-control form-control-sm" placeholder="">
         </div>
 
         <div class="detalle-filtro-acciones">
-          <button type="button" class="btn btn-outline-light btn-sm" id="btnDetallePresetSku">
-            Predeterminado
-          </button>
-          <button type="button" class="btn btn-outline-light btn-sm" id="btnDetalleLimpiar">
-            Limpiar
-          </button>
-        </div>
+
+        <button type="button" class="btn btn-outline-light btn-sm" id="btnDetallePresetSku">
+          Predeterminado
+        </button>
+
+        <button type="button" class="btn btn-outline-light btn-sm" id="btnDetalleActivarTodas">
+          Activar todas
+        </button>
+
+        <button type="button" class="btn btn-outline-light btn-sm" id="btnDetalleDesactivarTodas">
+          Desactivar todas
+        </button>
+
+        <button type="button" class="btn btn-outline-light btn-sm" id="btnDetalleLimpiar">
+          Limpiar
+        </button>
+      </div>
       </div>
 
       <!-- BODY -->
@@ -301,12 +303,33 @@
 
       <!-- FOOTER -->
       <div class="detalle-footer">
-        <div class="detalle-footer-left" id="detalleFooterInfo">—</div>
-        <div class="detalle-footer-right">
-          <button type="button" class="btn btn-success" id="btnDetalleGuardar">Guardar</button>
-          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cerrar</button>
-        </div>
+  <div class="detalle-footer-left">
+    <div class="detalle-kpis">
+      <div class="detalle-kpi">
+        <div id="detalleTiendasActivasNum" class="detalle-kpi-num">0</div>
+        <div class="detalle-kpi-label">Tiendas activas</div>
       </div>
+
+      <div class="detalle-kpi">
+        <div id="detalleTiendasSegmentadasNum" class="detalle-kpi-num">0</div>
+        <div class="detalle-kpi-label">Unidades asignadas</div>
+      </div>
+    </div>
+
+    <!-- Este sigue existiendo para mensajes tipo “Guardado exitoso…” -->
+    <div id="detalleFooterInfo" class="detalle-footer-info"></div>
+      </div>
+
+      <div class="detalle-footer-actions">
+        <button id="btnDetalleCancelar" type="button" class="btn btn-secondary">
+          Cancelar
+        </button>
+
+        <button id="btnDetalleGuardar" type="button" class="btn btn-primary">
+          Guardar Segmentación
+        </button>
+      </div>
+    </div>
 
     </div>
   </div>
@@ -317,6 +340,5 @@
 <!-- ============================= -->
 <script src="{{ url_for('static', filename='js/detalle.js') }}"></script>
 <script src="{{ url_for('static', filename='js/segmentacion.js') }}"></script>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 
 {% endblock %}

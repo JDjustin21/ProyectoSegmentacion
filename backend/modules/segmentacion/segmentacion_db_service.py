@@ -2,6 +2,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
+from config.settings import DEFAULT_USER_ID
+
 
 from repositories.postgres_repository import PostgresRepository
 
@@ -162,6 +164,34 @@ class SegmentacionDbService:
     def guardar_segmentacion(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         now = datetime.now(ZoneInfo("America/Bogota"))
 
+        # 1) Id versión activa
+        row = self._repo.fetch_one("""
+            SELECT id_version
+            FROM maestra_tiendas_version
+            WHERE estado_version='Activa'
+            ORDER BY id_version DESC
+            LIMIT 1;
+        """)
+        if not row:
+            raise RuntimeError("No existe versión Activa en maestra_tiendas_version.")
+        id_version_activa = int(row["id_version"])
+
+        # 2) Refrescar snapshot para que la FK de segmentacion_detalle no falle
+        self._repo.execute("SELECT * FROM public.refresh_maestra_tiendas_actual();")
+
+        ref = (payload.get("referenciaSku") or "").strip()
+        if not ref:
+            raise RuntimeError("Falta referenciaSku para guardar.")
+
+        detalles = payload.get("detalle") or []
+        if not isinstance(detalles, list):
+            raise RuntimeError("El campo 'detalle' debe ser una lista.")
+
+        # Si quieres: validar que exista al menos una cantidad > 0
+        any_positive = any(int(d.get("cantidad") or 0) > 0 for d in detalles if isinstance(d, dict))
+        if not any_positive:
+            raise RuntimeError("No hay cantidades para guardar (todas están en 0).")
+
         # Cabecera (siempre nueva para MVP)
         sql_insert_head = """
             INSERT INTO segmentacion (
@@ -178,11 +208,11 @@ class SegmentacionDbService:
         """
 
         head_params = {
-            "id_usuario": int(payload.get("id_usuario") or 1),
+            "id_usuario": int(payload.get("id_usuario") or DEFAULT_USER_ID),
             "fecha_creacion": now,
-            "id_version_tiendas": int(payload.get("id_version_tiendas") or 0),
+            "id_version_tiendas": id_version_activa,
             "estado_segmentacion": payload.get("estado_segmentacion") or "Activa",
-            "referencia": (payload.get("referenciaSku") or "").strip(),
+            "referencia": ref,
             "codigo_barras": (payload.get("codigo_barras") or "").strip(),
             "descripcion": (payload.get("descripcion") or "").strip(),
             "categoria": (payload.get("categoria") or "").strip(),
@@ -253,29 +283,87 @@ class SegmentacionDbService:
     # -------------------------
     # Dataset para export CSV por fecha/rango
     # -------------------------
-    def export_dataset_por_rango(self, desde: datetime, hasta: datetime) -> List[Dict[str, Any]]:
-        sql = """
+    def export_dataset_todas(self) -> List[Dict[str, Any]]:
+        sql = f"""
             SELECT
                 s.id_segmentacion,
                 s.fecha_creacion,
+                s.id_usuario,
+                s.id_version_tiendas,
                 s.referencia,
+                s.codigo_barras,
                 s.descripcion,
                 s.categoria,
                 s.linea,
                 s.tipo_portafolio,
                 s.estado_sku,
                 s.cuento,
+                s.tipo_inventario,
+
                 d.llave_naval,
                 d.talla,
                 d.cantidad,
+                d.estado_detalle,
                 d.fecha_actualizacion,
+
+                -- datos tienda (desde la vista)
+                t.cod_bodega,
+                t.cod_dependencia,
                 t.dependencia,
                 t.desc_dependencia,
                 t.ciudad,
                 t.zona,
                 t.clima,
+                t.rankin_linea,
+                t.testeo_fnl AS testeo
+            FROM segmentacion_detalle d
+            JOIN segmentacion s
+              ON s.id_segmentacion = d.id_segmentacion
+            LEFT JOIN {self._view_tiendas} t
+              ON t.llave_naval = d.llave_naval
+            WHERE COALESCE(d.estado_detalle,'Activo') = 'Activo'
+              AND COALESCE(s.estado_segmentacion,'Activa') = 'Activa'
+            ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
+        """
+        return self._repo.fetch_all(sql)
+
+    # -------------------------
+    # Dataset para export CSV por fecha/rango (si luego lo vuelves a necesitar)
+    # -------------------------
+    def export_dataset_por_rango(self, desde: datetime, hasta: datetime) -> List[Dict[str, Any]]:
+        sql = f"""
+            SELECT
+                s.id_segmentacion,
+                s.fecha_creacion,
+                s.id_usuario,
+                s.id_version_tiendas,
+                s.referencia,
+                s.codigo_barras,
+                s.descripcion,
+                s.categoria,
+                s.linea,
+                s.tipo_portafolio,
+                s.estado_sku,
+                s.cuento,
+                s.tipo_inventario,
+                s.estado_segmentacion,
+
+
+                d.llave_naval,
+                d.talla,
+                d.cantidad,
+                d.estado_detalle,
+                d.fecha_actualizacion,
+
                 t.cod_bodega,
-                t.cod_dependencia
+                t.cod_dependencia,
+                t.dependencia,
+                t.desc_dependencia,
+                t.ciudad,
+                t.zona,
+                t.clima,
+                t.rankin_linea,
+                t.testeo_fnl AS testeo
             FROM segmentacion_detalle d
             JOIN segmentacion s
               ON s.id_segmentacion = d.id_segmentacion
@@ -284,6 +372,7 @@ class SegmentacionDbService:
             WHERE d.fecha_actualizacion >= %(desde)s
               AND d.fecha_actualizacion <  %(hasta)s
               AND COALESCE(d.estado_detalle,'Activo') = 'Activo'
+              AND COALESCE(s.estado_segmentacion,'Activa') = 'Activa'
             ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
         """
         return self._repo.fetch_all(sql, {"desde": desde, "hasta": hasta})

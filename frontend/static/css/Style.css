@@ -4,8 +4,12 @@
 
 .detalle-modal{
   background:#ffffff;
-  color:#0b1f3a; /* azul oscuro */
+  color:#0b1f3a;
   border:1px solid rgba(11,31,58,.15);
+
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* =========================
@@ -164,9 +168,33 @@
 }
 
 /* Izquierda */
-.detalle-row-left .dep{
+.detalle-row-5 .dep{
   font-weight: 800;
-  font-size: 14px;
+  font-size: 13px;
+  color:#0b1f3a;
+}
+
+.detalle-row-5.detalle-row-head{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #f6f7fb;
+  border: 1px solid #e3e6ee;
+  border-radius: 10px;
+
+  font-weight: 700;
+  font-size: 13px;     /* ✅ más pequeño */
+  color: #0b1f3a;
+
+  padding: 10px 12px;  /* ✅ similar a filas */
+  margin-bottom: 8px;
+  align-items: center; /* ✅ alinea verticalmente */
+}
+
+.detalle-row-5.detalle-row-head > div{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .detalle-row-left .meta{
@@ -205,10 +233,11 @@
 
 .detalle-talla-col{
   display: grid;
-  grid-template-rows: auto auto auto auto;
+  grid-template-rows: auto auto;
   justify-items: center;
   align-content: start;
 
+  width: 58px;
   background:#f7f9fc;
   border:1px solid rgba(11,31,58,.12);  
   border-radius: 8px;
@@ -219,6 +248,7 @@
 .detalle-talla-label{
   font-size: 11px;
   font-weight: 800;
+  line-height: 1;
 }
 
 .btn-qty{
@@ -230,7 +260,8 @@
 
 /* Input */
 .detalle-qty-box{
-  width: 38px;
+  width: 48px;
+  height: 28px;
   text-align: center;
   padding: 2px 4px;
   font-size: 11px;
@@ -241,6 +272,11 @@
   border-radius: 10px !important;
 }
 
+.detalle-qty-box:disabled{
+  background: #eef2f7 !important;
+  opacity: .7;
+  cursor: not-allowed;
+}
 /* =========================
    FOOTER
    ========================= */
@@ -269,3 +305,471 @@
 .detalle-footer .btn-outline-light:hover{
   background:#eef3f8;
 }
+
+/* ============================
+   NUEVO LOOK: grid + cards tipo catálogo
+   (No rompe JS: solo estilo)
+============================ */
+.products-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.product-card{
+  background: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+.product-card:hover{
+  transform: translateY(-4px);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.14);
+}
+
+.product-image{
+  width: 100%;
+  height: 200px;
+  background: #f0f2f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.product-image img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-info{
+  padding: 14px 14px 16px 14px;
+}
+
+.product-ref{
+  font-size: 12px;
+  color: #6c757d;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.product-name{
+  font-size: 14px;
+  font-weight: 700;
+  margin-top: 6px;
+  line-height: 1.2;
+  color: #2c3e50;
+}
+
+.product-meta{
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+}
+
+.product-meta b{
+  color: #2c3e50;
+}
+
+/* Layout 5 columnas dentro del modal */
+.detalle-row-5{
+  display: grid;
+  grid-template-columns: 2.2fr 0.8fr 0.8fr 3fr 1.4fr;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  background: rgba(255,255,255,0.06);
+}
+
+.detalle-col{
+  min-width: 0;
+}
+
+.detalle-col.tallas .detalle-tallas{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Marca visual cuando está desactivado */
+.detalle-talla-col.is-disabled{
+  opacity: 0.55;
+}
+
+/* Header: referencia + estado a la derecha */
+.detalle-header-refline{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+}
+
+#detalleRefEstadoBadge{
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+/* Fila de títulos (Tienda / Perfil / Activo / Tallas / Rotación) */
+.detalle-row-head{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #f6f7fb;
+  border: 1px solid #e3e6ee;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+/* Para que el header se vea compacto */
+.detalle-row-head .detalle-col{
+  padding: 12px 16px;
+}
+
+/* Centrar el switch vertical/horizontal en su columna */
+.detalle-col-activo{
+  display: flex;
+  align-items: center;
+}
+
+/* Ajuste: filas de tiendas más “limpias” */
+.detalle-row-5{
+  display: grid;
+  grid-template-columns: 2.2fr 0.8fr 0.8fr 3fr 1.4fr;
+  gap: 12px;
+
+  padding: 10px 12px;       /* ✅ igual al header */
+  border-radius: 10px;
+  margin-bottom: 10px;
+
+  background:#ffffff;
+  border:1px solid rgba(11,31,58,.12);
+
+  align-items: center;      /* ✅ alinea todo verticalmente */
+}
+
+/* Info básica tienda en pequeño */
+.detalle-row-5 .meta,
+.detalle-row-5 .small{
+  font-size: 11px;
+  opacity: .78;
+}
+
+.detalle-row-5 .detalle-col:nth-child(2),
+.detalle-row-5 .detalle-col:nth-child(5){
+  font-size: 12px;
+  color: #0b1f3a;
+}
+
+/* Switch grande tipo “nuevo” */
+.seg-activo-toggle{
+  width: 56px !important;
+  height: 28px !important;
+  cursor: pointer;
+}
+
+.seg-activo-toggle:checked{
+  background-color: #27ae60 !important;
+  border-color: #27ae60 !important;
+}
+
+/* Quita títulos repetidos dentro de cada fila (ya hay encabezado) */
+.detalle-col .col-title{
+  display:none;
+}
+
+.active-toggle .meta,
+.detalle-col .small{
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.product-info-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.product-info-head .badge{
+  white-space:nowrap;
+}
+
+/* ============================
+   PERFIL (Rankin) como badge por color
+============================ */
+.perfil-badge{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: .3px;
+  border: 1px solid rgba(11,31,58,.15);
+}
+
+.perfil-green{
+  background: #d4edda;
+  color: #155724;
+  border-color: rgba(21,87,36,.25);
+}
+
+.perfil-yellow{
+  background: #fff3cd;
+  color: #856404;
+  border-color: rgba(133,100,4,.25);
+}
+
+.perfil-red{
+  background: #f8d7da;
+  color: #721c24;
+  border-color: rgba(114,28,36,.25);
+}
+
+/* ============================
+   TOGGLE GRANDE estilo HTML nuevo
+============================ */
+.active-toggle{
+  width: 56px;
+  height: 30px;
+  background: #cfd4da;
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  border: 1px solid rgba(11,31,58,.20);
+}
+
+.active-toggle::after{
+  content: '';
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  background: #ffffff;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: all 0.25s ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
+}
+
+.active-toggle.active{
+  background: #27ae60; /* success */
+  border-color: rgba(39,174,96,.45);
+}
+
+.active-toggle.active::after{
+  left: 30px;
+}
+
+/* Centrar el toggle en la columna */
+.detalle-col-activo{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detalle-kpis{
+  display:flex;
+  gap: 26px;
+  align-items: baseline;
+}
+
+.detalle-kpi-num{
+  font-size: 22px;
+  font-weight: 800;
+  color: #0b1f3a;
+  line-height: 1;
+}
+
+.detalle-kpi-label{
+  font-size: 13px;
+  color:#6b7280;
+  margin-top: 2px;
+}
+
+.detalle-footer-left{
+  display:flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detalle-footer-info{
+  font-size: 12px;
+  color:#6b7280;
+}
+
+.detalle-footer-actions{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+}
+
+
+:root{
+  --primary: #333880;
+  --text: #0b1f3a;
+  --border: rgba(11,31,58,.15);
+  --soft-bg: #f7f9fc;
+  --success: #27ae60;
+}
+
+/* =========================
+   LAYOUT PRINCIPAL (BASE)
+   ========================= */
+.app-layout{
+  display:flex;
+  width:100%;
+}
+
+.sidebar{
+  width: 260px;
+  background:#1f232a;
+  color:#fff;
+  flex: 0 0 auto;
+  transition: width .22s ease;
+}
+
+.sidebar-top{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  padding: 14px 14px;
+}
+
+.sidebar-title{
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.sidebar-toggle{
+  border: none;
+  background: rgba(255,255,255,.12);
+  color:#fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.sidebar-toggle:hover{
+  background: rgba(255,255,255,.18);
+}
+
+.sidebar .nav-link{
+  border-radius: 10px !important;
+}
+
+.main-content{
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 18px;
+}
+
+/* colapsado */
+.app-layout.sidebar-collapsed .sidebar{
+  width: 72px;
+}
+
+.app-layout.sidebar-collapsed .sidebar-title{
+  display:none;
+}
+
+.app-layout.sidebar-collapsed .nav-text{
+  display:none;
+}
+
+.app-layout.sidebar-collapsed .nav-link{
+  text-align:center;
+}
+
+/* =========================
+   FILTROS PRINCIPALES
+   ========================= */
+.filters-card{
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(11,31,58,.10);
+  background: #ffffff;
+}
+
+.filters-card .card-body{
+  padding: 14px 16px;
+}
+
+.filters-card .form-label{
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  opacity: .85;
+  margin-bottom: 6px;
+}
+
+.filters-card .form-select,
+.filters-card .form-control{
+  border:1px solid rgba(11,31,58,.20);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.filters-card .form-select:focus,
+.filters-card .form-control:focus{
+  box-shadow: 0 0 0 .2rem rgba(11,31,58,.10);
+  border-color: rgba(11,31,58,.35);
+}
+
+/* Acciones derecha */
+.filters-actions{
+  display:flex;
+  gap: 10px;
+  justify-content:flex-end;
+}
+
+.btn-export-main{
+  background: var(--success) !important;
+  color:#fff !important;
+  border:none !important;
+  border-radius: 12px !important;
+  padding: 10px 16px !important;
+  font-weight: 900 !important;
+  box-shadow: 0 10px 18px rgba(39,174,96,.18);
+}
+
+.btn-export-main:hover{
+  filter: brightness(0.97);
+}
+
+.btn-clear{
+  background:#fff !important;
+  color: var(--text) !important;
+  border: 1px solid rgba(11,31,58,.25) !important;
+  border-radius: 12px !important;
+  padding: 10px 16px !important;
+  font-weight: 900 !important;
+}
+
+.btn-clear:hover{
+  background: var(--soft-bg) !important;
+}
+
+
+/* ============================
+   FIN Style.css
