@@ -372,18 +372,22 @@ html, body{
 }
 
 .product-image{
+  /* mantiene un área consistente para todas las cards */
   width: 100%;
-  height: 200px;
-  background: #f0f2f5;
+  height: 120px;              /* ajusta si quieres más alto */
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;           /* por seguridad */
+  background: #fff;           /* opcional: se ve limpio cuando sobra espacio */
 }
 
 .product-image img{
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;        /* CLAVE: muestra toda la imagen */
+  object-position: center;
+  transform: none;            /* evita zoom */
 }
 
 .product-info{
@@ -396,6 +400,34 @@ html, body{
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot-new{
+  display:inline-block;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#e53935;
+  margin-left:6px;
+  vertical-align:middle;
+}
+
+.product-badges{
+  display:flex;
+  gap:6px;
+  align-items:center;
+}
+
+.badge-segmented{
+  background:#1f8f4a;
+  color:#fff;
+  font-size:12px;
+  padding:4px 8px;
+  border-radius:999px;
+  font-weight:600;
 }
 
 .product-name{
@@ -471,18 +503,20 @@ html, body{
   background: #f6f7fb;
   border: 1px solid #e3e6ee;
   border-radius: 10px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 /* Para que el header se vea compacto */
 .detalle-row-head .detalle-col{
-  padding: 12px 16px;
+  padding: 6px 8px;      /* más bajito */
+  font-size: 13px;       /* texto más compacto */
+  line-height: 0.5;      /* reduce altura */
 }
 
 /* Centrar el switch vertical/horizontal en su columna */
 .detalle-col-activo{
   display: flex;
-  align-items: center;
+  align-items: center;;
 }
 
 /* Ajuste: filas de tiendas más “limpias” */
@@ -554,13 +588,15 @@ html, body{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 42px;
-  padding: 6px 10px;
+  min-width: 36px;
+  padding: 4px 8px;
   border-radius: 999px;
   font-weight: 800;
   font-size: 12px;
   letter-spacing: .3px;
   border: 1px solid rgba(11,31,58,.15);
+  line-height: 1;
+  padding-right: 6px;
 }
 
 .perfil-green{
@@ -585,8 +621,8 @@ html, body{
    TOGGLE GRANDE estilo HTML nuevo
 ============================ */
 .active-toggle{
-  width: 56px;
-  height: 30px;
+  width: 40px;
+  height: 22px;
   background: #cfd4da;
   border-radius: 999px;
   position: relative;
@@ -598,31 +634,33 @@ html, body{
 .active-toggle::after{
   content: '';
   position: absolute;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   background: #ffffff;
   border-radius: 50%;
-  top: 2px;
-  left: 2px;
+  top: 1px;     /* centrado vertical: (22-18)/2 = 2, pero con borde se ve mejor en 1 */
+  left: 1px;
   transition: all 0.25s ease;
   box-shadow: 0 2px 6px rgba(0,0,0,.18);
 }
 
 .active-toggle.active{
-  background: #27ae60; /* success */
+  background: #27ae60;
   border-color: rgba(39,174,96,.45);
 }
 
 .active-toggle.active::after{
-  left: 30px;
+  left: 21px;  /* 40 - 18 - 1 = 21 */
 }
 
 /* Centrar el toggle en la columna */
 .detalle-col-activo{
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-left: 6px;
 }
+
 
 .detalle-kpis{
   display:flex;

@@ -53,7 +53,8 @@
 
       <ul class="nav nav-pills flex-column gap-2 px-2 pb-3">
         <li class="nav-item">
-          <a class="nav-link active" href="#">
+          <a class="nav-link {% if request.path == url_for('segmentacion.vista_segmentacion') %}active{% endif %}"
+          href="{{ url_for('segmentacion.vista_segmentacion') }}">
             <span class="nav-text">Referencias</span>
           </a>
         </li>
@@ -66,6 +67,12 @@
           <a class="nav-link text-white" href="#">
             <span class="nav-text">Analíticas</span>
           </a>
+        </li>
+        <li>
+        <a class="nav-link {% if request.path.startswith(url_for('segmentacion.vista_utilidades')) %}active{% endif %}"
+        href="{{ url_for('segmentacion.vista_utilidades') }}">
+          <span class="nav-text">Utilidades</span>
+        </a>
         </li>
       </ul>
     </nav>

@@ -108,7 +108,7 @@
     // “Unidades asignadas” según tu definición nueva:
     // = cuántas tiendas están “segmentadas” en ese momento
     // = activas y con al menos una talla > 0
-    let segmentadas = 0;
+    let unidadesAsignadas = 0;
 
     tiendas.forEach(t => {
       const llave = norm(t.llave_naval);
@@ -118,17 +118,15 @@
         activas += 1;
 
         const byTalla = state.cantidades?.[llave] || {};
-        const total = tallas.reduce((sum, talla) => {
+        tallas.forEach(talla => {
           const k = norm(talla);
-          return sum + Number(byTalla?.[k] || 0);
-        }, 0);
-
-        if (total > 0) segmentadas += 1;
+          unidadesAsignadas += Number(byTalla?.[k] || 0);
+        });
       }
     });
 
     if (dom.tiendasActivasNumEl) dom.tiendasActivasNumEl.textContent = String(activas);
-    if (dom.tiendasSegmentadasNumEl) dom.tiendasSegmentadasNumEl.textContent = String(segmentadas);
+    if (dom.tiendasSegmentadasNumEl) dom.tiendasSegmentadasNumEl.textContent = String(unidadesAsignadas);
   }
 
   function perfilClass(rankinLinea) {
@@ -521,9 +519,7 @@
 
     if (!payload.referenciaSku) throw new Error("Falta referenciaSku para guardar.");
     if (!payload.linea) throw new Error("Falta línea para guardar.");
-    if (!Array.isArray(payload.detalle) || payload.detalle.length === 0) {
-      throw new Error("No hay cantidades para guardar (todas están en 0).");
-    }
+    if (!Array.isArray(payload.detalle)) payload.detalle = [];
 
     const res = await fetch(API_GUARDAR, {
       method: "POST",
@@ -756,7 +752,6 @@
     // Limpiar = limpia filtros + cantidades + recarga
     dom.btnLimpiar?.addEventListener("click", async () => {
       limpiarFiltros(dom);
-      limpiarCantidades();
       await refetch();
     });
 
@@ -780,14 +775,24 @@
       setLoading(dom, true);
 
       try {
-        await guardarSegmentacion(dom);
+        const resp = await guardarSegmentacion(dom);
+
         dom.footerInfoEl.textContent = `Guardado exitoso • ${new Date().toLocaleString()}`;
-      } catch (err) {
-        setError(dom, err?.message || "Error guardando.");
-      } finally {
-        setLoading(dom, false);
-      }
-    });
+
+        // Dispara evento SOLO después de guardar OK
+        window.dispatchEvent(new CustomEvent("segmentacion:guardada", {
+          detail: {
+            referenciaSku: state.ref.referenciaSku,
+            apiResponse: resp
+          }
+        }));
+
+    } catch (err) {
+      setError(dom, err?.message || "Error guardando.");
+    } finally {
+      setLoading(dom, false);
+    }
+  });
   }
 
   initModalEventsOnce();

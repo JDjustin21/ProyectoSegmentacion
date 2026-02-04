@@ -23,8 +23,13 @@ import os
 import re
 import time
 import unicodedata
+import json
 from pathlib import Path
+from werkzeug.utils import secure_filename
 from flask import current_app, request, abort, send_from_directory
+
+from datetime import datetime, timezone
+from modules.segmentacion.app_cache_service import AppCacheService
 
 from config.settings import (
     SQLSERVER_API_URL,
@@ -47,6 +52,8 @@ segmentacion_bp = Blueprint(
     url_prefix="/segmentacion"
 )
 
+CACHE_KEY_REFERENCIAS = "referencias_sqlserver"
+CACHE_TTL_SECONDS = 120  # 2 min
 
 @segmentacion_bp.route("/", methods=["GET"])
 def vista_segmentacion():
@@ -56,18 +63,106 @@ def vista_segmentacion():
     - Renderiza HTML con el dataset embebido (script JSON)
     - Pasa configuración al frontend vía data-attributes (sin hardcode en JS)
     """
-    servicio = SegmentacionService(SQLSERVER_API_URL)
-    referencias = servicio.obtener_referencias()
+    repo = PostgresRepository(POSTGRES_DSN)
+    cache = AppCacheService(repo)
+
+    cached = cache.get(CACHE_KEY_REFERENCIAS)
+    if cache.is_fresh(cached, CACHE_TTL_SECONDS):
+        referencias = cached["payload"]
+    else:
+        # Lock key fijo (un número) para "referencias"
+        LOCK_KEY = 910001  
+
+        got_lock = cache.try_lock(LOCK_KEY)
+        if got_lock:
+            try:
+                servicio = SegmentacionService(SQLSERVER_API_URL)
+                referencias = servicio.obtener_referencias()
+                cache.set(CACHE_KEY_REFERENCIAS, referencias)
+            finally:
+                cache.unlock(LOCK_KEY)
+        else:
+            # Otro ya está refrescando: esperamos un poquito el cache y usamos eso
+            cached2 = cache.wait_for_refresh(CACHE_KEY_REFERENCIAS, CACHE_TTL_SECONDS, max_wait_seconds=8.0)
+            referencias = (cached2 or {}).get("payload") or []
+
+            # fallback extremo: si por alguna razón sigue vacío, refrescamos igual
+            if not referencias:
+                servicio = SegmentacionService(SQLSERVER_API_URL)
+                referencias = servicio.obtener_referencias()
+                cache.set(CACHE_KEY_REFERENCIAS, referencias)
+
+    svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    referencias = svc_pg.marcar_y_anotar_referencias_nuevas(referencias, dias_nuevo=7)
+    referencias = svc_pg.anotar_referencias_segmentadas(referencias)
+
+    referencias.sort(key=lambda r: (not r.get("is_new", False)))
 
     return render_template(
         "segmentacion.html",
         referencias=referencias,
         cards_per_page=SEGMENTACION_CARDS_PER_PAGE,
         images_base_url=IMAGES_BASE_URL,
-        # Configuración para tallas/fallback en frontend
         default_tallas_mvp=DEFAULT_TALLAS_MVP,
         lineas_tallas_fijas=LINEAS_TALLAS_FIJAS,
     )
+
+@segmentacion_bp.get("/utilidades")
+def vista_utilidades():
+    """
+    Vista Utilidades:
+    - Exportar segmentaciones
+    - Importar imágenes a static/assets/images/referencias
+    """
+    return render_template("utilidades.html")
+
+@segmentacion_bp.post("/api/cache/referencias/refresh")
+def api_refresh_cache_referencias():
+    repo = PostgresRepository(POSTGRES_DSN)
+    cache = AppCacheService(repo)
+
+    servicio = SegmentacionService(SQLSERVER_API_URL)
+    referencias = servicio.obtener_referencias()
+
+    svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    referencias = svc_pg.marcar_y_anotar_referencias_nuevas(referencias, dias_nuevo=7)
+
+    cache.set(CACHE_KEY_REFERENCIAS, referencias)
+    return jsonify({"ok": True, "mensaje": "Cache de referencias actualizado", "count": len(referencias)})
+
+@segmentacion_bp.post("/api/referencias/ack")
+def api_ack_referencia():
+    payload = request.get_json(silent=True) or {}
+    referencia = (payload.get("referencia") or "").strip()
+    if not referencia:
+        return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
+
+    repo = PostgresRepository(POSTGRES_DSN)
+    now = datetime.now(ZoneInfo("America/Bogota"))
+
+    repo.execute("""
+        UPDATE public.referencias_vistas
+        SET acknowledged_at = %(now)s
+        WHERE referencia_sku = %(ref)s;
+    """, {"now": now, "ref": referencia})
+
+    return jsonify({"ok": True})
+
+@segmentacion_bp.post("/api/referencias/segmentar")
+def api_segmentar_referencia():
+    payload = request.get_json(silent=True) or {}
+    referencia_sku = (payload.get("referencia") or "").strip()
+    if not referencia_sku:
+        return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
+
+    repo = PostgresRepository(POSTGRES_DSN)
+    svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+
+    # Marcamos como segmentada en la base de datos
+    svc_pg.marcar_como_segmentada(referencia_sku)
+
+    return jsonify({"ok": True, "mensaje": "Referencia segmentada"})
+
 
 
 @segmentacion_bp.get("/api/tiendas/activas")
@@ -147,6 +242,13 @@ def api_guardar_segmentacion():
     svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
 
     result = svc.guardar_segmentacion(payload)
+    if result.get("ok") is True:
+        referencia_sku = (payload.get("referenciaSku") or "").strip()
+        svc.marcar_como_segmentada(referencia_sku)
+
+        # opcional: devolver flag para UI inmediata
+        result["is_segmented"] = True
+
     return jsonify(result)
 
 
@@ -239,6 +341,83 @@ def api_imagen_por_referencia():
         abort(404)
 
     return send_from_directory(img_dir, filename)
+
+@segmentacion_bp.post("/api/imagenes/upload")
+def api_upload_imagenes():
+    """
+    Sube una o varias imágenes y las guarda en:
+    static/assets/images/referencias/
+
+    Reglas:
+    - Acepta: .jpg, .jpeg, .png, .webp
+    - Normaliza el nombre para que matchee con la referencia:
+        "104535-00 | 616.png" -> "10453500616.png"
+    - Sobrescribe si ya existe.
+    - Refresca el índice de imágenes al final.
+    """
+    # 1) Tomamos archivos del form-data
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"ok": False, "error": "No se recibieron archivos. Usa el campo 'files'."}), 400
+
+    img_dir = _images_dir()
+    img_dir.mkdir(parents=True, exist_ok=True)
+
+    guardadas = []
+    rechazadas = []
+
+    for f in files:
+        if not f or not getattr(f, "filename", ""):
+            continue
+
+        original_name = f.filename
+        safe_name = secure_filename(original_name)  # evita rutas raras o caracteres peligrosos
+        if not safe_name:
+            rechazadas.append({"archivo": original_name, "motivo": "Nombre inválido"})
+            continue
+
+        # 2) Validar extensión
+        ext = Path(safe_name).suffix.lower()
+        if ext not in _ALLOWED_EXTS:
+            rechazadas.append({"archivo": original_name, "motivo": f"Extensión no permitida ({ext})"})
+            continue
+
+        # 3) Normalizar "stem" (nombre sin extensión) para que siempre sea la key
+        #    Ej: "104535-00 | 616" -> "10453500616"
+        stem = Path(safe_name).stem
+        key = normalizar_referencia(stem)
+        if not key:
+            rechazadas.append({"archivo": original_name, "motivo": "No se pudo normalizar a referencia"})
+            continue
+
+        # 4) Nombre final del archivo (siempre key + ext)
+        final_name = f"{key}{ext}"
+        dest_path = img_dir / final_name
+
+        # 5) Guardar (sobrescribe)
+        #    Nota: f.save sobrescribe si el archivo existe.
+        try:
+            f.save(dest_path)
+            guardadas.append({
+                "archivo_original": original_name,
+                "archivo_guardado": final_name
+            })
+        except Exception as ex:
+            rechazadas.append({"archivo": original_name, "motivo": f"Error guardando: {str(ex)}"})
+
+    # 6) Refrescar índice (para que se vea inmediato sin esperar TTL)
+    _rebuild_index_if_needed(force=True, ttl_seconds=60)
+
+    return jsonify({
+        "ok": True,
+        "resumen": {
+            "recibidos": len(files),
+            "guardadas": len(guardadas),
+            "rechazadas": len(rechazadas),
+        },
+        "guardadas": guardadas,
+        "rechazadas": rechazadas
+    })
 
 
 @segmentacion_bp.get("/api/export/csv")

@@ -61,13 +61,16 @@
     const placeholderUrl = norm(config?.placeholderUrl) || "https://via.placeholder.com/120x120?text=IMG";
 
     const imageResolverUrl = norm(config?.imageResolverUrl);
+
+    const isNew = ref.is_new === true || ref.isNew === true;
+    const isSegmented = ref.is_segmented === true || ref.isSegmented === true;
+
     if (!imageResolverUrl) {
       throw new Error("Falta config.imageResolverUrl para resolver imágenes de referencia.");
     }
 
     const imgUrl = `${imageResolverUrl}?ref=${encodeURIComponent(referencia)}`;
 
-    // PrecioUnitario (si viene del backend)
     const precioUnitario = ref.PrecioUnitario ?? ref.precioUnitario ?? ref.precio_unitario;
     const precioTxt = formatCOP(precioUnitario);
 
@@ -103,8 +106,13 @@
 
         <div class="product-info">
           <div class="product-info-head">
-            <div class="product-ref">${referencia}</div>
-            <span class="badge ${badgeClass} ${badgeTextClass}">${estado || "—"}</span>
+            <div class="product-ref">${referencia}
+            ${isNew ? `<span class="ref-new-dot" title="Nueva referencia"></span>` : ``}
+            </div>
+            <div class="product-badges">
+              <span class="badge ${badgeClass} ${badgeTextClass}">${estado || "—"}</span>
+              ${isSegmented ? `<span class="badge badge-segmented">Segmentada</span>` : ``}
+            </div>
           </div>
 
           <div class="product-meta">

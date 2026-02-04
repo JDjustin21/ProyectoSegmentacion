@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Utilidades{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h4 class="mb-1">Utilidades</h4>
+      <div class="text-muted">Exportar segmentaciones e importar imágenes de referencias.</div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <!-- IMPORTAR IMÁGENES -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title mb-2">Importar imágenes</h5>
+          <p class="text-muted mb-3">
+            Sube imágenes (.png, .jpg, .jpeg, .webp). Se guardan en <code>static/assets/images/referencias/</code>.
+            Si ya existe una imagen con la misma referencia, se <b>sobrescribe</b>.
+          </p>
+
+          <form id="formUploadImgs" class="d-flex flex-column gap-2">
+            <input id="inputImgs" class="form-control" type="file" name="files" multiple accept=".png,.jpg,.jpeg,.webp">
+            <button id="btnUpload" type="submit" class="btn btn-primary">
+              Subir imágenes
+            </button>
+          </form>
+
+          <div id="uploadStatus" class="mt-3" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPORTAR SEGMENTACIONES -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title mb-2">Exportar segmentaciones</h5>
+          <p class="text-muted mb-3">
+            Descarga el archivo CSV con todas las segmentaciones guardadas.
+          </p>
+
+          <a class="btn btn-outline-success" href="/segmentacion/api/export/csv">
+            Descargar CSV
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById("formUploadImgs");
+  const input = document.getElementById("inputImgs");
+  const status = document.getElementById("uploadStatus");
+  const btn = document.getElementById("btnUpload");
+
+  function showAlert(html, type="info") {
+    status.style.display = "block";
+    status.className = "alert alert-" + type;
+    status.innerHTML = html;
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const files = input.files;
+    if (!files || files.length === 0) {
+      showAlert("Selecciona al menos un archivo.", "warning");
+      return;
+    }
+
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+
+    btn.disabled = true;
+    btn.textContent = "Subiendo...";
+
+    try {
+      const res = await fetch("/segmentacion/api/imagenes/upload", {
+        method: "POST",
+        body: fd
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.ok === false) {
+        const msg = (json && (json.error || json.mensaje)) ? (json.error || json.mensaje) : ("HTTP " + res.status);
+        showAlert("Error subiendo imágenes: " + msg, "danger");
+        return;
+      }
+
+      const okCount = json?.resumen?.guardadas ?? 0;
+      const badCount = json?.resumen?.rechazadas ?? 0;
+
+      let html = `<b>Listo.</b> Guardadas: ${okCount} • Rechazadas: ${badCount}`;
+
+      if (Array.isArray(json.rechazadas) && json.rechazadas.length > 0) {
+        html += `<hr class="my-2"><div class="small"><b>Rechazadas</b></div><ul class="small mb-0">`;
+        json.rechazadas.slice(0, 10).forEach(r => {
+          html += `<li>${r.archivo}: ${r.motivo}</li>`;
+        });
+        if (json.rechazadas.length > 10) html += `<li>... (${json.rechazadas.length - 10} más)</li>`;
+        html += `</ul>`;
+      }
+
+      showAlert(html, "success");
+      input.value = ""; // limpia input
+
+    } catch (err) {
+      showAlert("Error inesperado: " + (err?.message || err), "danger");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Subir imágenes";
+    }
+  });
+})();
+</script>
+{% endblock %}

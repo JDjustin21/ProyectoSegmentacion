@@ -96,7 +96,7 @@
       data-cards-per-page="{{ cards_per_page }}"
       data-image-resolver-url="/segmentacion/api/imagenes/referencia"
       data-images-base-url="{{ images_base_url }}"
-      data-placeholder-url="https://via.placeholder.com/120x120?text=IMG"
+      data-placeholder-url="{{ url_for('static', filename='assets/images/placeholder.png') }}"
       data-default-tallas-mvp="{{ default_tallas_mvp }}"
       data-lineas-tallas-fijas="{{ lineas_tallas_fijas }}"> 
     </div>

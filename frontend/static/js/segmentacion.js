@@ -49,6 +49,26 @@ document.addEventListener("DOMContentLoaded", () => {
     throw new Error("JSON inválido en #data-referencias");
   }
 
+  function marcarReferenciaComoSegmentada(referenciaSku) {
+    const refKey = norm(referenciaSku);
+
+    const obj = referencias.find(r => norm(r.referencia) === refKey);
+    if (!obj) return;
+
+    // marcamos en el objeto fuente de verdad del frontend
+    obj.is_segmented = true;
+    obj.isSegmented = true; // por si en algún lado usas camelCase
+
+    render(); // repinta las cards con el badge "Segmentada"
+  }
+
+  // Evento que dispara detalle.js SOLO cuando guarda OK
+  window.addEventListener("segmentacion:guardada", (ev) => {
+    const ref = ev?.detail?.referenciaSku;
+    if (!ref) return;
+    marcarReferenciaComoSegmentada(ref);
+  });
+
   // =========================================================
   // 3) Helpers (funciones puras, sin tocar DOM)
   // =========================================================
@@ -458,6 +478,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const tallasConteo = refObj?.tallasConteo || null;
     const codigoBarras = norm(refObj?.codigoBarras);
     const tipoInventario = norm(refObj?.tipoInventario);
+
+    fetch("/segmentacion/api/referencias/ack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ referencia: referenciaSku })
+    }).catch(() => {});
+
+    const dot = card.querySelector(".dot-new");
+    if (dot) dot.remove();
+
+  
 
     window.SegmentacionDetalle.open({
       referenciaSku,

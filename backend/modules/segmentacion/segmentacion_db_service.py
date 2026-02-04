@@ -1,5 +1,5 @@
 # backend/modules/segmentacion/segmentacion_db_service.py
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
 from config.settings import DEFAULT_USER_ID
@@ -77,7 +77,9 @@ class SegmentacionDbService:
               AND (%(ciudad)s = '' OR v.ciudad ILIKE %(ciudad_like)s)
               AND (%(clima)s = '' OR v.clima ILIKE %(clima_like)s)
               AND (%(testeo)s = '' OR COALESCE(v.testeo_fnl,'') ILIKE %(testeo_like)s)
-              AND (%(clasificacion)s = '' OR COALESCE(v.rankin_linea,'') ILIKE %(clasificacion_like)s)
+              AND (%(clasificacion)s = '' OR (%(clasificacion_is_exact)s = TRUE
+              AND UPPER(COALESCE(v.rankin_linea,'')) = %(clasificacion_exact)s) OR (%(clasificacion_is_exact)s = FALSE
+              AND COALESCE(v.rankin_linea,'') ILIKE %(clasificacion_like)s))
 
             ORDER BY COALESCE(v.desc_dependencia, v.dependencia);
         """
@@ -88,6 +90,15 @@ class SegmentacionDbService:
         dependencia_v = (dependencia or "").strip()
         testeo_v = (testeo or "").strip()
         clasificacion_v = (clasificacion or "").strip()
+
+                # Normalización para decidir “exacto”
+        clasif_up = clasificacion_v.upper().replace(" ", "")
+        if clasif_up == "N/A":
+            clasif_up = "NA"
+
+        allowed_exact = {"AA", "A", "B", "C", "NA"}
+
+        clasificacion_is_exact = clasif_up in allowed_exact
 
         tiendas = self._repo.fetch_all(sql, {
             "linea_norm": linea_norm,
@@ -108,6 +119,8 @@ class SegmentacionDbService:
             "testeo_like": f"%{testeo_v}%",
 
             "clasificacion": clasificacion_v,
+            "clasificacion_is_exact": clasificacion_is_exact,
+            "clasificacion_exact": clasif_up,
             "clasificacion_like": f"%{clasificacion_v}%",
         })
 
@@ -183,14 +196,11 @@ class SegmentacionDbService:
         if not ref:
             raise RuntimeError("Falta referenciaSku para guardar.")
 
-        detalles = payload.get("detalle") or []
+        detalles = payload.get("detalle")
+        if detalles is None:
+            detalles = []
         if not isinstance(detalles, list):
             raise RuntimeError("El campo 'detalle' debe ser una lista.")
-
-        # Si quieres: validar que exista al menos una cantidad > 0
-        any_positive = any(int(d.get("cantidad") or 0) > 0 for d in detalles if isinstance(d, dict))
-        if not any_positive:
-            raise RuntimeError("No hay cantidades para guardar (todas están en 0).")
 
         # Cabecera (siempre nueva para MVP)
         sql_insert_head = """
@@ -230,7 +240,6 @@ class SegmentacionDbService:
         )
 
         # Detalle: guardamos solo cantidades > 0 (MVP limpio)
-        detalles = payload.get("detalle") or []
         filas = []
         total_units = 0
         tiendas_con_cantidad = set()
@@ -267,7 +276,8 @@ class SegmentacionDbService:
                 %(id_segmentacion)s, %(llave_naval)s, %(talla)s, %(cantidad)s, %(estado_detalle)s, %(fecha_actualizacion)s
             );
         """
-        self._repo.execute_many(sql_insert_det, filas)
+        if filas:
+            self._repo.execute_many(sql_insert_det, filas)
 
         return {
             "ok": True,
@@ -376,3 +386,112 @@ class SegmentacionDbService:
             ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
         """
         return self._repo.fetch_all(sql, {"desde": desde, "hasta": hasta})
+    
+    def marcar_y_anotar_referencias_nuevas(self, referencias: List[Dict[str, Any]], dias_nuevo: int = 7) -> List[Dict[str, Any]]:
+        """
+        - Registra/actualiza en Postgres qué referencias han sido vistas por el aplicativo
+          (tabla public.referencias_vistas).
+        - Marca cada referencia con is_new=True si first_seen está dentro de los últimos N días.
+
+        Reglas:
+        - first_seen se conserva.
+        - last_seen se actualiza cada vez que aparece en el dataset.
+        """
+
+        if not referencias:
+            return referencias
+
+        now = datetime.now(ZoneInfo("America/Bogota"))
+
+        # 1) Extraer referencias del dataset (sin hardcode de estructura rara)
+        ref_list: List[str] = []
+        for r in referencias:
+            ref = (r.get("referencia") or "").strip()
+            if ref:
+                ref_list.append(ref)
+
+        if not ref_list:
+            return referencias
+
+        # 2) Upsert masivo: inserta nuevas, actualiza last_seen si ya existen
+        sql_upsert = """
+            INSERT INTO public.referencias_vistas (referencia_sku, last_seen)
+            VALUES (%(referencia_sku)s, %(last_seen)s)
+            ON CONFLICT (referencia_sku)
+            DO UPDATE SET last_seen = EXCLUDED.last_seen;
+        """
+
+        rows = [{"referencia_sku": ref, "last_seen": now} for ref in ref_list]
+        self._repo.execute_many(sql_upsert, rows)
+
+        # 3) Consultar cuáles son "nuevas" (first_seen reciente)
+        cutoff = now - timedelta(days=int(dias_nuevo))
+
+        sql_nuevas = """
+            SELECT referencia_sku
+            FROM public.referencias_vistas
+            WHERE first_seen >= %(cutoff)s
+            AND acknowledged_at IS NULL;
+        """
+        nuevas_rows = self._repo.fetch_all(sql_nuevas, {"cutoff": cutoff})
+        nuevas_set = { (x.get("referencia_sku") or "").strip() for x in nuevas_rows }
+
+        # 4) Anotar flag en el dataset para que el frontend lo use
+        for r in referencias:
+            ref = (r.get("referencia") or "").strip()
+            r["is_new"] = True if ref and ref in nuevas_set else False
+
+        return referencias
+    
+    def anotar_referencias_segmentadas(self, referencias: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Anota en el dataset el flag is_segmented=True si la referencia tiene segmented_at en Postgres.
+        Fuente de verdad: public.referencias_vistas.segmented_at
+        """
+        if not referencias:
+            return referencias
+
+        ref_list: List[str] = []
+        for r in referencias:
+            ref = (r.get("referencia") or "").strip()
+            if ref:
+                ref_list.append(ref)
+
+        if not ref_list:
+            return referencias
+
+        sql = """
+            SELECT referencia_sku
+            FROM public.referencias_vistas
+            WHERE referencia_sku = ANY(%(refs)s)
+              AND segmented_at IS NOT NULL;
+        """
+        rows = self._repo.fetch_all(sql, {"refs": ref_list})
+        seg_set = {(x.get("referencia_sku") or "").strip() for x in rows}
+
+        for r in referencias:
+            ref = (r.get("referencia") or "").strip()
+            r["is_segmented"] = True if ref and ref in seg_set else False
+
+        return referencias
+    
+    # Método para marcar una referencia como segmentada
+    def marcar_como_segmentada(self, referencia_sku: str) -> None:
+            ref = (referencia_sku or "").strip()
+            if not ref:
+                return
+
+            now = datetime.now(ZoneInfo("America/Bogota"))
+
+            # Upsert: si no existe, la crea; si existe, actualiza segmented_at y last_seen
+            sql = """
+                INSERT INTO public.referencias_vistas (referencia_sku, first_seen, last_seen, segmented_at)
+                VALUES (%(ref)s, %(now)s, %(now)s, %(now)s)
+                ON CONFLICT (referencia_sku)
+                DO UPDATE SET
+                    last_seen = EXCLUDED.last_seen,
+                    segmented_at = EXCLUDED.segmented_at;
+            """
+            self._repo.execute(sql, {"ref": ref, "now": now})
+
+
