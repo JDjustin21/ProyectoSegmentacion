@@ -2,7 +2,7 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 
 class PostgresRepository:
@@ -63,3 +63,20 @@ class PostgresRepository:
                 for r in rows:
                     cur.execute(sql, r)
                 conn.commit()
+                
+    def run_in_transaction(self, fn: Callable[[Any], Any]) -> Any:
+        """
+        Ejecuta varias operaciones en una sola transacción.
+        - Si fn termina OK: commit
+        - Si fn falla: rollback
+        fn recibe el cursor (RealDictCursor) para ejecutar SQL.
+        """
+        with self._conn() as conn:
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    result = fn(cur)
+                conn.commit()
+                return result
+            except Exception:
+                conn.rollback()
+                raise

@@ -7,8 +7,9 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parents[2]  # .../proyecto/
 load_dotenv(ROOT_DIR / ".env")
 
-SQLSERVER_API_URL = "http://localhost:5031"
-SEGMENTACION_CARDS_PER_PAGE = 8
+#SQLSERVER_API_URL = "http://localhost:5031"
+SQLSERVER_API_URL = os.getenv("SQLSERVER_API_URL", "http://localhost")
+SEGMENTACION_CARDS_PER_PAGE = 16
 
 REF_IMAGES_DIR = r"C:\Creytex\ImagenesReferencias"
 REF_IMAGES_ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
@@ -25,3 +26,4 @@ LINEAS_TALLAS_FIJAS = os.getenv(
 
 DEFAULT_USER_ID = int(os.getenv("DEFAULT_USER_ID", "1").strip())
 
+print("SQLSERVER_API_URL =", SQLSERVER_API_URL)

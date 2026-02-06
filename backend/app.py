@@ -1,10 +1,8 @@
 # backend/app.py
 
 from flask import Flask, send_file, abort
-from modules.segmentacion.services import SegmentacionService
-from modules.segmentacion.routes import segmentacion_bp 
-from config.settings import SQLSERVER_API_URL
-from config.settings import REF_IMAGES_DIR, REF_IMAGES_ALLOWED_EXTENSIONS
+from backend.modules.segmentacion.routes import segmentacion_bp
+from backend.config.settings import REF_IMAGES_DIR, REF_IMAGES_ALLOWED_EXTENSIONS
 import os
 
 def create_app():

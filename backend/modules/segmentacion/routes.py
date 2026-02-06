@@ -29,9 +29,9 @@ from werkzeug.utils import secure_filename
 from flask import current_app, request, abort, send_from_directory
 
 from datetime import datetime, timezone
-from modules.segmentacion.app_cache_service import AppCacheService
+from backend.modules.segmentacion.app_cache_service import AppCacheService
 
-from config.settings import (
+from backend.config.settings import (
     SQLSERVER_API_URL,
     SEGMENTACION_CARDS_PER_PAGE,
     IMAGES_BASE_URL,
@@ -41,9 +41,9 @@ from config.settings import (
     LINEAS_TALLAS_FIJAS,
 )
 
-from modules.segmentacion.services import SegmentacionService
-from repositories.postgres_repository import PostgresRepository
-from modules.segmentacion.segmentacion_db_service import SegmentacionDbService
+from backend.modules.segmentacion.services import SegmentacionService
+from backend.repositories.postgres_repository import PostgresRepository
+from backend.modules.segmentacion.segmentacion_db_service import SegmentacionDbService
 
 
 segmentacion_bp = Blueprint(
@@ -437,9 +437,8 @@ def api_export_csv():
     rows = svc.export_dataset_todas()
 
     headers = [
-        "fecha_actualizacion",
+        
         "id_segmentacion",
-        "fecha_creacion",
         "id_usuario",
         "id_version_tiendas",
         "estado_segmentacion",
@@ -453,6 +452,7 @@ def api_export_csv():
         "estado_sku",
         "cuento",
         "tipo_inventario",
+        "precio_unitario",
 
         "llave_naval",
         "talla",
@@ -467,7 +467,9 @@ def api_export_csv():
         "zona",
         "clima",
         "rankin_linea",
-        "testeo"
+        "testeo",
+        "fecha_creacion",
+        "fecha_actualizacion"
     ]
 
     sio = io.StringIO()
@@ -476,9 +478,8 @@ def api_export_csv():
 
     for r in rows:
         writer.writerow({
-            "fecha_actualizacion": r.get("fecha_actualizacion"),
+           
             "id_segmentacion": r.get("id_segmentacion"),
-            "fecha_creacion": r.get("fecha_creacion"),
             "id_usuario": r.get("id_usuario"),
             "id_version_tiendas": r.get("id_version_tiendas"),
             "estado_segmentacion": r.get("estado_segmentacion"),
@@ -492,6 +493,7 @@ def api_export_csv():
             "estado_sku": r.get("estado_sku"),
             "cuento": r.get("cuento"),
             "tipo_inventario": r.get("tipo_inventario"),
+            "precio_unitario": r.get("precio_unitario"),
 
             "llave_naval": r.get("llave_naval"),
             "talla": r.get("talla"),
@@ -507,6 +509,8 @@ def api_export_csv():
             "clima": r.get("clima"),
             "rankin_linea": r.get("rankin_linea"),
             "testeo": r.get("testeo"),
+            "fecha_actualizacion": r.get("fecha_actualizacion"),
+            "fecha_creacion": r.get("fecha_creacion"),
         })
 
     # Tip: utf-8-sig ayuda a Excel a abrir acentos bien (BOM)

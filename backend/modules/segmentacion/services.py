@@ -7,8 +7,8 @@ from decimal import Decimal
 
 import re
 from typing import Any, Dict, List, Optional, Tuple
-from config.settings import POSTGRES_DSN, POSTGRES_TIENDAS_VIEW, DEFAULT_TALLAS_MVP
-from repositories.postgres_repository import PostgresRepository
+from backend.config.settings import POSTGRES_DSN, POSTGRES_TIENDAS_VIEW, DEFAULT_TALLAS_MVP
+from backend.repositories.postgres_repository import PostgresRepository
 
 
 class SegmentacionService:

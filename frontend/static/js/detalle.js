@@ -200,6 +200,7 @@
       cuento: "",
       codigoBarras: "",
       tipoInventario: "",
+      precioUnitario: 0,
       tallasFinal: [],
       tallasConteo: null,
     },
@@ -229,6 +230,10 @@
   if (e === "inactivo") return "bg-danger";
   if (e === "moda") return "bg-warning text-dark";
   return "bg-secondary";
+}
+function toNumberOrZero(v) {
+  const n = Number((v ?? "").toString().replace(",", ".").trim());
+  return Number.isFinite(n) ? n : 0;
 }
 
   // =========================
@@ -494,6 +499,7 @@
       categoria: state.ref.categoria,
       linea: state.ref.lineaRaw,               
       tipo_portafolio: state.ref.tipoPortafolio,
+      precio_unitario: toNumberOrZero(state.ref.precioUnitario),
       estado_sku: state.ref.estado,
       cuento: state.ref.cuento,
       codigo_barras: state.ref.codigoBarras,
@@ -557,6 +563,9 @@
     state.ref.cuento = norm(payload.cuento);
     state.ref.codigoBarras = norm(payload.codigoBarras);
     state.ref.tipoInventario = norm(payload.tipoInventario);
+    state.ref.precioUnitario = toNumberOrZero(
+      payload.precioUnitario ?? payload.precio_unitario ?? payload.PrecioUnitario
+    );
 
     state.ref.tallasFinal = Array.isArray(payload.tallasFinal)
       ? payload.tallasFinal.map(norm).filter(Boolean)

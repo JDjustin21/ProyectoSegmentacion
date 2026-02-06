@@ -49,24 +49,39 @@ document.addEventListener("DOMContentLoaded", () => {
     throw new Error("JSON inválido en #data-referencias");
   }
 
-  function marcarReferenciaComoSegmentada(referenciaSku) {
+  function setReferenciaSegmentada(referenciaSku, isSegmented) {
     const refKey = norm(referenciaSku);
 
     const obj = referencias.find(r => norm(r.referencia) === refKey);
     if (!obj) return;
 
-    // marcamos en el objeto fuente de verdad del frontend
-    obj.is_segmented = true;
-    obj.isSegmented = true; // por si en algún lado usas camelCase
+    const flag = isSegmented === true; // fuerza boolean
 
-    render(); // repinta las cards con el badge "Segmentada"
+    obj.is_segmented = flag;
+    obj.isSegmented = flag;
+
+    render();
   }
 
   // Evento que dispara detalle.js SOLO cuando guarda OK
   window.addEventListener("segmentacion:guardada", (ev) => {
     const ref = ev?.detail?.referenciaSku;
     if (!ref) return;
-    marcarReferenciaComoSegmentada(ref);
+
+    const resp = ev?.detail?.apiResponse || {};
+
+    // El backend te devuelve esto en resumen.is_segmented
+    const isSeg = resp?.resumen?.is_segmented;
+
+    // Fallback por si lo devuelves en otro nivel (opcional)
+    const isSeg2 = resp?.is_segmented;
+
+    const finalFlag = (isSeg === true) || (isSeg === false) ? isSeg : isSeg2;
+
+    // Si no viene, por seguridad NO cambiamos nada
+    if (finalFlag === true || finalFlag === false) {
+      setReferenciaSegmentada(ref, finalFlag);
+    }
   });
 
   // =========================================================
@@ -437,6 +452,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const categoria = norm(card.dataset.categoria);
     const estado = norm(card.dataset.estado);
     const tipoPortafolio = norm(card.dataset.portafolio);
+    const precioUnitario = norm(card.dataset.preciounitario);
     const color = norm(card.dataset.color);
     const cuento = norm(card.dataset.cuento);
 
@@ -496,6 +512,7 @@ document.addEventListener("DOMContentLoaded", () => {
       categoria,
       estado,
       tipoPortafolio,
+      precioUnitario,
       lineaRaw,
       lineaTexto,
       color,
