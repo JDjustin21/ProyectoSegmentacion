@@ -30,6 +30,8 @@ from flask import current_app, request, abort, send_from_directory
 
 from datetime import datetime, timezone
 from backend.modules.segmentacion.app_cache_service import AppCacheService
+from backend.modules.auth.decorators import login_required
+
 
 from backend.config.settings import (
     SQLSERVER_API_URL,
@@ -56,6 +58,7 @@ CACHE_KEY_REFERENCIAS = "referencias_sqlserver"
 CACHE_TTL_SECONDS = 120  # 2 min
 
 @segmentacion_bp.route("/", methods=["GET"])
+@login_required
 def vista_segmentacion():
     """
     Vista principal:
@@ -94,7 +97,7 @@ def vista_segmentacion():
 
     svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
     referencias = svc_pg.marcar_y_anotar_referencias_nuevas(referencias, dias_nuevo=7)
-    referencias = svc_pg.anotar_referencias_segmentadas(referencias)
+    referencias = svc_pg.anotar_segmentacion_y_conteo(referencias)
 
     referencias.sort(key=lambda r: (not r.get("is_new", False)))
 
@@ -244,10 +247,16 @@ def api_guardar_segmentacion():
     result = svc.guardar_segmentacion(payload)
     if result.get("ok") is True:
         referencia_sku = (payload.get("referenciaSku") or "").strip()
-        svc.marcar_como_segmentada(referencia_sku)
 
-        # opcional: devolver flag para UI inmediata
-        result["is_segmented"] = True
+        # Fuente de verdad: Postgres (última segmentación + detalle + vista tiendas activas)
+        flags = svc.obtener_estado_y_conteo_segmentacion([referencia_sku]).get(
+            referencia_sku,
+            {"is_segmented": False, "tiendas_activas_segmentadas": 0}
+        )
+
+        result["is_segmented"] = bool(flags["is_segmented"])
+        result["tiendas_activas_segmentadas"] = int(flags["tiendas_activas_segmentadas"] or 0)
+
 
     return jsonify(result)
 

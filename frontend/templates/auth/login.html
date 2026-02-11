@@ -1,0 +1,47 @@
+{% extends "login_base.html" %}
+{% block title %}Iniciar sesión{% endblock %}
+
+{% block content %}
+
+  <a class="login-corner-brand" href="{{ url_for('auth.login') }}" aria-label="Belife">
+    <img src="{{ url_for('static', filename='assets/images/logo_belife.png') }}" alt="Belife"
+        onerror="this.style.display='none';">
+  </a>
+
+  <div class="login-bg"></div>
+    <div class="login-overlay"></div>
+
+    <main class="login-main">
+      <div class="login-card">
+        <div class="login-card-body text-center">
+
+          <h1 class="login-title mb-2">Iniciar sesión</h1>
+
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              {% for category, msg in messages %}
+                <div class="alert alert-{{ category }} py-2 mt-3" role="alert" style="border-radius:12px;">
+                  {{ msg }}
+                </div>
+              {% endfor %}
+            {% endif %}
+          {% endwith %}
+
+          <form method="POST" action="{{ url_for('auth.login', next=next) }}" class="text-start">
+            <input type="hidden" name="next" value="{{ next }}">
+
+            <div class="mb-3">
+              <label class="form-label small text-muted">Email</label>
+              <input class="form-control login-input" type="email" name="email" required autocomplete="username">
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label small text-muted">Contraseña</label>
+              <input class="form-control login-input" type="password" name="password" required autocomplete="current-password">
+            </div>
+
+            <button class="btn btn-dark login-btn w-100" type="submit">Entrar</button>
+          </form>
+    </div>
+  </div>
+{% endblock %}

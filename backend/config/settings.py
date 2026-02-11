@@ -7,13 +7,17 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parents[2]  # .../proyecto/
 load_dotenv(ROOT_DIR / ".env")
 
-#SQLSERVER_API_URL = "http://localhost:5031"
-SQLSERVER_API_URL = os.getenv("SQLSERVER_API_URL", "http://localhost")
+SQLSERVER_API_URL = "http://localhost:5031"
+#SQLSERVER_API_URL = os.getenv("SQLSERVER_API_URL", "http://localhost")
 SEGMENTACION_CARDS_PER_PAGE = 16
 
 REF_IMAGES_DIR = r"C:\Creytex\ImagenesReferencias"
 REF_IMAGES_ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
 IMAGES_BASE_URL = "/ref_images"
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("Falta SECRET_KEY en .env")
 
 POSTGRES_DSN = os.getenv("POSTGRES_DSN", "").strip()
 POSTGRES_TIENDAS_VIEW = os.getenv("POSTGRES_TIENDAS_VIEW", "vw_maestra_tiendas_activa_norm").strip()

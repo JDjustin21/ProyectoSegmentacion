@@ -32,9 +32,41 @@
     try {
       return n.toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
     } catch {
-      // fallback simple por si el runtime no soporta locale
       return `$ ${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
     }
+  }
+
+  // Genera un "badge imagen" (SVG) con el conteo
+  function makeBadgeSvg(count) {
+    const safe = String(count)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="28" viewBox="0 0 64 28">
+        <defs>
+          <filter id="s" x="-20%" y="-50%" width="140%" height="200%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.30"/>
+          </filter>
+        </defs>
+
+        <g filter="url(#s)">
+          <rect x="1" y="1" rx="14" ry="14" width="62" height="26" fill="rgba(0,0,0,0.70)"/>
+
+          <!-- Icono casa (blanco) -->
+          <path d="M14 12.2L20 7.6l6 4.6v8.2c0 .7-.6 1.3-1.3 1.3h-2.9c-.4 0-.8-.4-.8-.8v-4.2h-2.2v4.2c0 .4-.4.8-.8.8h-2.9c-.7 0-1.3-.6-1.3-1.3v-8.2z"
+                fill="#fff" opacity="0.95"/>
+
+          <!-- Numero -->
+          <text x="44" y="18" text-anchor="middle"
+            font-family="Inter, Segoe UI, Arial" font-size="13" font-weight="800"
+            fill="#fff">${safe}</text>
+        </g>
+      </svg>
+    `.trim();
+
+    return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
   }
 
   /**
@@ -57,13 +89,22 @@
 
     const { badgeClass, badgeTextClass, estado } = getBadge(ref.estado);
 
-    const imagesBaseUrl = norm(config?.imagesBaseUrl);
     const placeholderUrl = norm(config?.placeholderUrl) || "https://via.placeholder.com/120x120?text=IMG";
-
     const imageResolverUrl = norm(config?.imageResolverUrl);
 
     const isNew = ref.is_new === true || ref.isNew === true;
-    const isSegmented = ref.is_segmented === true || ref.isSegmented === true;
+
+    // Fuente de verdad para segmentación en UI: CONTEO > 0
+        const tiendasSegRaw =
+      ref.tiendas_activas_segmentadas ??
+      ref.tiendasActivasSegmentadas ??
+      ref.tiendasSegmentadas ??
+      ref.tiendas_segmentadas ??
+      0;
+
+    const tiendasSeg = Number(tiendasSegRaw);
+    const tiendasSegNum = Number.isFinite(tiendasSeg) ? tiendasSeg : 0;
+    const showSegBadge = tiendasSegNum > 0;
 
     if (!imageResolverUrl) {
       throw new Error("Falta config.imageResolverUrl para resolver imágenes de referencia.");
@@ -73,6 +114,11 @@
 
     const precioUnitario = ref.PrecioUnitario ?? ref.precioUnitario ?? ref.precio_unitario;
     const precioTxt = formatCOP(precioUnitario);
+
+    // Badge imagen (si hay segmentación real)
+    const segBadgeImg = showSegBadge
+      ? `<img class="seg-badge" src="${makeBadgeSvg(tiendasSegNum)}" alt="Tiendas segmentadas" title="Tiendas segmentadas: ${tiendasSegNum}">`
+      : ``;
 
     return `
       <div class="product-card reference-card"
@@ -90,7 +136,8 @@
         data-preciounitario="${norm(precioUnitario)}"
       >
         <div class="product-image">
-          <img
+          ${segBadgeImg}
+          <img class="ref-img"
             src="${imgUrl}"
             alt="Imagen referencia"
             onerror="
@@ -107,11 +154,10 @@
         <div class="product-info">
           <div class="product-info-head">
             <div class="product-ref">${referencia}
-            ${isNew ? `<span class="ref-new-dot" title="Nueva referencia"></span>` : ``}
+              ${isNew ? `<span class="ref-new-dot" title="Nueva referencia"></span>` : ``}
             </div>
             <div class="product-badges">
               <span class="badge ${badgeClass} ${badgeTextClass}">${estado || "—"}</span>
-              ${isSegmented ? `<span class="badge badge-segmented">Segmentada</span>` : ``}
             </div>
           </div>
 
@@ -119,9 +165,10 @@
             <div><b>Categoría:</b> ${categoria || "—"}</div>
             <div><b>Línea:</b> ${linea || "—"}</div>
             <div><b>Cuento:</b> ${cuento || "—"}</div>
+
             ${precioTxt ? `
             <div class="product-price-row">
-                <span class="product-price-value">${precioTxt}</span>
+              <span class="product-price-value">${precioTxt}</span>
             </div>
             ` : ``}
           </div>
@@ -130,7 +177,6 @@
     `;
   }
 
-  // Exponemos un único “componente” global, simple y claro
   window.CardReferencia = {
     crearCardHTML
   };

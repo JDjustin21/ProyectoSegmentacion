@@ -2,7 +2,9 @@
 
 from flask import Flask, send_file, abort
 from backend.modules.segmentacion.routes import segmentacion_bp
-from backend.config.settings import REF_IMAGES_DIR, REF_IMAGES_ALLOWED_EXTENSIONS
+from backend.modules.auth.auth_routes import auth_bp
+from backend.config.settings import REF_IMAGES_DIR, REF_IMAGES_ALLOWED_EXTENSIONS, SECRET_KEY
+from backend.modules.admin.admin_routes import admin_bp
 import os
 
 def create_app():
@@ -11,6 +13,11 @@ def create_app():
         template_folder="../frontend/templates",
         static_folder="../frontend/static"
     )
+    
+    app.config["SECRET_KEY"] = SECRET_KEY  # viene de settings / env
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(admin_bp)
 
     # Registrar el módulo de segmentación
     app.register_blueprint(segmentacion_bp)

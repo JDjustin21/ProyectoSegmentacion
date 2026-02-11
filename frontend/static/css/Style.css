@@ -373,6 +373,7 @@ html, body{
 
 .product-image{
   /* mantiene un área consistente para todas las cards */
+  position: relative;
   width: 100%;
   height: 120px;              /* ajusta si quieres más alto */
   display: flex;
@@ -382,12 +383,22 @@ html, body{
   background: #fff;           /* opcional: se ve limpio cuando sobra espacio */
 }
 
-.product-image img{
+.seg-badge{
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 64px;
+  height: 28px;
+  z-index: 5;        
+  pointer-events: none;
+}
+
+.product-image img.ref-img{
   width: 100%;
   height: 100%;
-  object-fit: contain;        /* CLAVE: muestra toda la imagen */
+  object-fit: contain;
   object-position: center;
-  transform: none;            /* evita zoom */
+  transform: none;
 }
 
 .product-info{
@@ -889,6 +900,12 @@ html, body{
   padding: 0 18px;
 }
 
+.topbar-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
 .topbar-brand{
   display: flex;
   align-items: center;
@@ -932,6 +949,9 @@ html, body{
   font-weight: 800;
   text-align: left;
 }
+
+
+
 
 /* ============================
    FIN Style.css

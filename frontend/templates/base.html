@@ -47,7 +47,7 @@
 
         <!-- botón colapsar -->
         <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Ocultar menú">
-          <span class="chev">‹</span>
+          <span class="chev"></span>
         </button>
       </div>
 
@@ -74,6 +74,21 @@
           <span class="nav-text">Utilidades</span>
         </a>
         </li>
+        {% if (session.get("rol") or "").lower() == "admin" %}
+        <li class="nav-item">
+          <a class="nav-link {% if request.path.startswith(url_for('admin.usuarios_index')) %}active{% endif %}"
+            href="{{ url_for('admin.usuarios_index') }}">
+            <span class="nav-text">Configuración</span>
+          </a>
+        </li>
+        {% endif %}
+        {% if session.get("user_id") %}
+          <div class="px-2 pb-3">
+            <a class="nav-link text-white" href="{{ url_for('auth.logout') }}">
+              <span class="nav-text">Salir</span>
+            </a>
+          </div>
+        {% endif %}
       </ul>
     </nav>
 

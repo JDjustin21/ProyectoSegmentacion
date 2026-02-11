@@ -33,11 +33,26 @@ class PostgresRepository:
                 return [dict(r) for r in rows]
 
     def fetch_one(self, sql: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        sql_clean = (sql or "").lstrip().lower()
+        is_select = sql_clean.startswith("select") or sql_clean.startswith("with")
+
         with self._conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(sql, params or {})
-                row = cur.fetchone()
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(sql, params or {})
+                    row = cur.fetchone()
+
+                # Si no es SELECT (por ejemplo INSERT/UPDATE/DELETE con RETURNING), confirmar la transacción
+                if not is_select:
+                    conn.commit()
+
                 return dict(row) if row else None
+
+            except Exception:
+                # Si falló algo en un statement que pudo modificar datos, revertir
+                # (en SELECT también es seguro)
+                conn.rollback()
+                raise
     
     def execute(self, sql: str, params: Optional[Dict[str, Any]] = None) -> None:
         with self._conn() as conn:

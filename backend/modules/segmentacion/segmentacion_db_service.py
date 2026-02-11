@@ -483,7 +483,6 @@ class SegmentacionDbService:
               ON t.llave_naval = d.llave_naval
             WHERE d.fecha_actualizacion >= %(desde)s
               AND d.fecha_actualizacion <  %(hasta)s
-            WHERE 1=1
             ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
         """
         return self._repo.fetch_all(sql, {"desde": desde, "hasta": hasta})
@@ -507,7 +506,7 @@ class SegmentacionDbService:
         # 1) Extraer referencias del dataset (sin hardcode de estructura rara)
         ref_list: List[str] = []
         for r in referencias:
-            ref = (r.get("referencia") or "").strip()
+            ref = (r.get("referencia") or r.get("referenciaSku") or r.get("Referencia") or "").strip()
             if ref:
                 ref_list.append(ref)
 
@@ -544,10 +543,11 @@ class SegmentacionDbService:
 
         return referencias
     
-    def anotar_referencias_segmentadas(self, referencias: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def anotar_segmentacion_y_conteo(self, referencias: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Anota en el dataset el flag is_segmented=True si la referencia tiene segmented_at en Postgres.
-        Fuente de verdad: public.referencias_vistas.segmented_at
+        Anota en el dataset:
+        - is_segmented: bool (fuente de verdad Postgres)
+        - tiendas_activas_segmentadas: int (solo para UI)
         """
         if not referencias:
             return referencias
@@ -561,20 +561,93 @@ class SegmentacionDbService:
         if not ref_list:
             return referencias
 
-        sql = """
-            SELECT referencia_sku
-            FROM public.referencias_vistas
-            WHERE referencia_sku = ANY(%(refs)s)
-              AND segmented_at IS NOT NULL;
-        """
-        rows = self._repo.fetch_all(sql, {"refs": ref_list})
-        seg_set = {(x.get("referencia_sku") or "").strip() for x in rows}
+        flags = self.obtener_estado_y_conteo_segmentacion(ref_list)
 
         for r in referencias:
-            ref = (r.get("referencia") or "").strip()
-            r["is_segmented"] = True if ref and ref in seg_set else False
+            ref = (r.get("referencia") or r.get("referenciaSku") or r.get("Referencia") or "").strip()
+            meta = flags.get(ref, {"is_segmented": False, "tiendas_activas_segmentadas": 0})
+
+            r["is_segmented"] = True if meta["is_segmented"] else False
+            r["tiendas_activas_segmentadas"] = int(meta["tiendas_activas_segmentadas"] or 0)
 
         return referencias
+    
+
+    def obtener_estado_y_conteo_segmentacion(self, ref_list: List[str]) -> Dict[str, Dict[str, Any]]:
+        """
+        Fuente de verdad:
+        - Última segmentación por referencia (segmentacion.fecha_creacion DESC)
+        - Detalle activo con cantidad > 0
+        - Tienda activa y línea activa según la vista (self._view_tiendas)
+        Retorna:
+        { referencia: { "is_segmented": bool, "tiendas_activas_segmentadas": int } }
+        """
+        if not ref_list:
+            return {}
+
+        sql = f"""
+            WITH last_seg AS (
+                SELECT DISTINCT ON (s.referencia)
+                    s.referencia,
+                    s.id_segmentacion,
+                    s.linea
+                FROM segmentacion s
+                WHERE s.referencia = ANY(%(refs)s)
+                ORDER BY s.referencia, s.fecha_creacion DESC
+            ),
+            seg_conteo AS (
+                SELECT
+                    ls.referencia,
+                    COUNT(DISTINCT d.llave_naval) AS tiendas_activas_segmentadas
+                FROM last_seg ls
+                JOIN segmentacion_detalle d
+                  ON d.id_segmentacion = ls.id_segmentacion
+                JOIN {self._view_tiendas} v
+                    ON v.llave_naval = d.llave_naval
+                    AND v.estado_tienda_norm = 'activo'
+                    AND v.estado_linea_norm  = 'activo'
+                    AND (
+                        COALESCE(NULLIF(TRIM(ls.linea), ''), '') = ''  -- si no hay línea en segmentación, NO filtra por línea
+                        OR v.linea_norm = (
+                                CASE
+                                    WHEN POSITION(' - ' IN COALESCE(ls.linea,'')) > 0
+                                        THEN LOWER(TRIM(SPLIT_PART(ls.linea, ' - ', 2)))
+                                    ELSE LOWER(TRIM(COALESCE(ls.linea,'')))
+                                END
+                        )
+                )
+                 AND v.estado_tienda_norm = 'activo'
+                 AND v.estado_linea_norm  = 'activo'
+                WHERE COALESCE(d.estado_detalle,'Activo') = 'Activo'
+                  AND COALESCE(d.cantidad,0) > 0
+                GROUP BY ls.referencia
+            )
+            SELECT
+                r.ref AS referencia,
+                COALESCE(sc.tiendas_activas_segmentadas, 0) AS tiendas_activas_segmentadas,
+                (COALESCE(sc.tiendas_activas_segmentadas, 0) > 0) AS is_segmented
+            FROM (SELECT UNNEST(%(refs)s) AS ref) r
+            LEFT JOIN seg_conteo sc
+              ON sc.referencia = r.ref;
+        """
+
+        rows = self._repo.fetch_all(sql, {"refs": ref_list})
+
+        out: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            ref = (r.get("referencia") or "").strip()
+            out[ref] = {
+                "is_segmented": bool(r.get("is_segmented")),
+                "tiendas_activas_segmentadas": int(r.get("tiendas_activas_segmentadas") or 0),
+            }
+
+        # asegurar que todas queden
+        for ref in ref_list:
+            if ref not in out:
+                out[ref] = {"is_segmented": False, "tiendas_activas_segmentadas": 0}
+
+        return out
+
     
     # Método para marcar una referencia como segmentada
     def marcar_como_segmentada(self, referencia_sku: str) -> None:

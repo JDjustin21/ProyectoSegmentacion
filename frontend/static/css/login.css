@@ -1,0 +1,111 @@
+.login-page{
+  min-height: 100vh;
+  position: relative;
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  overflow: hidden;
+  background: #f5f6f7;
+}
+
+/* Fondo */
+.login-bg{
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(900px 600px at 70% 20%, rgba(0,0,0,0.08), transparent 60%),
+    radial-gradient(800px 500px at 20% 80%, rgba(0,0,0,0.06), transparent 55%),
+    linear-gradient(180deg, #f6f7f8, #eef0f3);
+}
+
+.login-overlay{
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.40);
+  backdrop-filter: blur(2px);
+}
+
+.login-main{
+  position: relative;
+  z-index: 3;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+/* Logo esquina */
+.login-corner-brand{
+  position: fixed;
+  top: 22px;
+  left: 22px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.login-corner-brand img{
+  display: block;
+  height: 34px;
+  width: auto;
+  object-fit: contain;
+}
+
+/* Card */
+.login-card{
+  width: 100%;
+  max-width: 460px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 18px;
+  box-shadow: 0 22px 70px rgba(0,0,0,0.18);
+}
+
+.login-card-body{
+  padding: 26px 26px 24px 26px;
+}
+
+.login-title{
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin: 0 0 6px 0;
+}
+
+.login-sub{
+  margin: 0 0 18px 0;
+  color: #6b7280;
+  text-align: center;
+}
+
+/* Inputs */
+.login-card .form-control{
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.login-card .btn{
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 700;
+}
+
+.login-input,
+.login-btn{
+  height: 48px;              /* mismo alto */
+  border-radius: 12px;
+}
+
+/* inputs ya tenían padding; con height fijo, dejamos padding estándar */
+.login-card .form-control.login-input{
+  padding: 0 14px;
+}
+
+/* botón full */
+.login-btn{
+  font-weight: 700;
+  padding: 0 14px;
+  height: 48px;
+  border-radius: 100px;
+  font-weight: 700;
+  width: 100%;
+  
+}

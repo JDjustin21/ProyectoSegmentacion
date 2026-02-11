@@ -49,19 +49,23 @@ document.addEventListener("DOMContentLoaded", () => {
     throw new Error("JSON inválido en #data-referencias");
   }
 
-  function setReferenciaSegmentada(referenciaSku, isSegmented) {
+  function setReferenciaSegmentadaYConteo(referenciaSku, isSegmented, tiendasActivasSegmentadas) {
     const refKey = norm(referenciaSku);
 
     const obj = referencias.find(r => norm(r.referencia) === refKey);
     if (!obj) return;
 
-    const flag = isSegmented === true; // fuerza boolean
+    const flag = isSegmented === true;
 
     obj.is_segmented = flag;
     obj.isSegmented = flag;
 
+    const n = Number(tiendasActivasSegmentadas);
+    obj.tiendas_activas_segmentadas = Number.isFinite(n) ? n : 0;
+
     render();
   }
+
 
   // Evento que dispara detalle.js SOLO cuando guarda OK
   window.addEventListener("segmentacion:guardada", (ev) => {
@@ -71,16 +75,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const resp = ev?.detail?.apiResponse || {};
 
     // El backend te devuelve esto en resumen.is_segmented
-    const isSeg = resp?.resumen?.is_segmented;
+    const isSeg = resp?.is_segmented;
+    const count = resp?.tiendas_activas_segmentadas;
 
-    // Fallback por si lo devuelves en otro nivel (opcional)
-    const isSeg2 = resp?.is_segmented;
-
-    const finalFlag = (isSeg === true) || (isSeg === false) ? isSeg : isSeg2;
-
-    // Si no viene, por seguridad NO cambiamos nada
-    if (finalFlag === true || finalFlag === false) {
-      setReferenciaSegmentada(ref, finalFlag);
+    if (isSeg === true || isSeg === false) {
+      setReferenciaSegmentadaYConteo(ref, isSeg, count);
     }
   });
 
