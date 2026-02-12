@@ -50,8 +50,46 @@
         </div>
       </div>
     </div>
+<!-- REINICIAR SEGMENTACIONES -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm border-danger">
+        <div class="card-body">
+          <h5 class="card-title mb-2 text-danger">Reiniciar segmentaciones</h5>
+          <p class="text-muted mb-3">
+            Esto eliminará todas las segmentaciones guardadas (cabecera y detalle). Esta acción no se puede deshacer.
+          </p>
+
+          <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalResetSeg">
+            Reiniciar
+          </button>
+
+          <div id="resetStatus" class="mt-3" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
+
+<!-- Modal confirmación reset -->
+<div class="modal fade" id="modalResetSeg" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;">
+      <div class="modal-header">
+        <h5 class="modal-title">¿Reiniciar segmentaciones?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        Vas a eliminar todas las segmentaciones guardadas. Esta acción no se puede deshacer.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">No</button>
+        <button id="btnConfirmReset" type="button" class="btn btn-danger">Sí, reiniciar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <script>
 (function () {
@@ -118,6 +156,52 @@
       btn.textContent = "Subir imágenes";
     }
   });
+
+  // --- reset segmentaciones ---
+  const resetStatus = document.getElementById("resetStatus");
+  const btnConfirmReset = document.getElementById("btnConfirmReset");
+
+  function showResetAlert(html, type="info") {
+    resetStatus.style.display = "block";
+    resetStatus.className = "alert alert-" + type;
+    resetStatus.innerHTML = html;
+  }
+
+  if (btnConfirmReset) {
+    btnConfirmReset.addEventListener("click", async () => {
+      btnConfirmReset.disabled = true;
+      btnConfirmReset.textContent = "Reiniciando...";
+
+      try {
+        const res = await fetch("/segmentacion/api/segmentaciones/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok || !json || json.ok === false) {
+          const msg = (json && (json.error || json.mensaje)) ? (json.error || json.mensaje) : ("HTTP " + res.status);
+          showResetAlert("No se pudo reiniciar: " + msg, "danger");
+          return;
+        }
+
+        showResetAlert("<b>Listo.</b> Segmentaciones reiniciadas.", "success");
+
+        // cerrar modal
+        const modalEl = document.getElementById("modalResetSeg");
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.hide();
+
+      } catch (err) {
+        showResetAlert("Error inesperado: " + (err?.message || err), "danger");
+      } finally {
+        btnConfirmReset.disabled = false;
+        btnConfirmReset.textContent = "Sí, reiniciar";
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}

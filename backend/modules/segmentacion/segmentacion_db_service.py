@@ -668,4 +668,22 @@ class SegmentacionDbService:
             """
             self._repo.execute(sql, {"ref": ref, "now": now})
 
+    def reset_segmentaciones(self) -> Dict[str, Any]:
+        """
+        Limpia por completo las tablas de segmentación.
+        Nota: usamos TRUNCATE para reiniciar rápido.
+        """
+        def _tx(cur):
+            # Si hay FK desde detalle -> cabecera, conviene truncar ambas en el mismo TRUNCATE.
+            cur.execute("""
+                TRUNCATE TABLE
+                    public.segmentacion_detalle,
+                    public.segmentacion
+                RESTART IDENTITY;
+            """)
+            return {"ok": True, "mensaje": "Segmentaciones reiniciadas correctamente."}
+
+        return self._repo.run_in_transaction(_tx)
+
+
 

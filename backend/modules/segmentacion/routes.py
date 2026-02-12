@@ -30,7 +30,7 @@ from flask import current_app, request, abort, send_from_directory
 
 from datetime import datetime, timezone
 from backend.modules.segmentacion.app_cache_service import AppCacheService
-from backend.modules.auth.decorators import login_required
+from backend.modules.auth.decorators import login_required, role_required
 
 
 from backend.config.settings import (
@@ -428,6 +428,20 @@ def api_upload_imagenes():
         "rechazadas": rechazadas
     })
 
+@segmentacion_bp.post("/api/segmentaciones/reset")
+@login_required
+@role_required("admin")
+def api_reset_segmentaciones():
+    """
+    Reinicia (TRUNCATE) las tablas de segmentación.
+    Acción destructiva: solo ADMIN.
+    """
+    repo = PostgresRepository(POSTGRES_DSN)
+    svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+
+    result = svc.reset_segmentaciones()
+    return jsonify(result)
+
 
 @segmentacion_bp.get("/api/export/csv")
 def api_export_csv():
@@ -502,7 +516,7 @@ def api_export_csv():
             "estado_sku": r.get("estado_sku"),
             "cuento": r.get("cuento"),
             "tipo_inventario": r.get("tipo_inventario"),
-            "precio_unitario": r.get("precio_unitario"),
+            "precio_unitario": int(round(float(r.get("precio_unitario") or 0))),
 
             "llave_naval": r.get("llave_naval"),
             "talla": r.get("talla"),
