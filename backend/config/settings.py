@@ -11,8 +11,6 @@ SQLSERVER_API_URL = "http://localhost:5031"
 #SQLSERVER_API_URL = os.getenv("SQLSERVER_API_URL", "http://localhost")
 SEGMENTACION_CARDS_PER_PAGE = 16
 
-REF_IMAGES_DIR = r"C:\Creytex\ImagenesReferencias"
-REF_IMAGES_ALLOWED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
 IMAGES_BASE_URL = "/ref_images"
 
 SECRET_KEY = os.getenv("SECRET_KEY")

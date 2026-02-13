@@ -1,20 +1,27 @@
 # backend/modules/segmentacion/segmentacion_db_service.py
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from typing import Any, Dict, List, Optional, Tuple, Callable
+from typing import Any, Dict, List
+
 from backend.config.settings import DEFAULT_USER_ID
-
-
 from backend.repositories.postgres_repository import PostgresRepository
+
+
+TZ_BOGOTA = ZoneInfo("America/Bogota")
+CLASIFICACIONES_EXACTAS = {"AA", "A", "B", "C", "NA"}
 
 
 class SegmentacionDbService:
     """
-    Servicio de negocio para el mundo Postgres:
-    - Tiendas activas por línea
-    - Guardar segmentación
-    - Consultar última segmentación
-    - Exportar CSV por ventana de tiempo
+    Servicio de negocio para Postgres (Segmentación):
+
+    - Consultar tiendas activas por línea (desde una vista normalizada)
+    - Guardar segmentaciones (cabecera + detalle) con histórico
+    - Consultar última segmentación por referencia
+    - Exportar dataset para CSV
+    - Reset (TRUNCATE) de tablas de segmentación (admin)
     """
 
     def __init__(self, repo: PostgresRepository, view_tiendas: str):
@@ -27,8 +34,8 @@ class SegmentacionDbService:
     def normalizar_linea(self, linea_raw: str) -> str:
         """
         Convierte:
-        "17 - Bebito" -> "bebito"
-        "Bebito" -> "bebito"
+          "17 - Bebito" -> "bebito"
+          "Bebito"      -> "bebito"
         """
         v = (linea_raw or "").strip()
         if " - " in v:
@@ -46,13 +53,27 @@ class SegmentacionDbService:
         clima: str = "",
         dependencia: str = "",
         testeo: str = "",
-        clasificacion: str = ""
+        clasificacion: str = "",
     ) -> Dict[str, Any]:
-
         linea_norm = self.normalizar_linea(linea_raw)
 
+        # Limpiar valores de filtros (evita espacios raros)
+        dependencia_v = (dependencia or "").strip()
+        zona_v = (zona or "").strip()
+        ciudad_v = (ciudad or "").strip()
+        clima_v = (clima or "").strip()
+        testeo_v = (testeo or "").strip()
+        clasificacion_v = (clasificacion or "").strip()
+
+        # Normalización para decidir si la clasificación debe ser exacta (AA/A/B/C/NA)
+        clasif_up = clasificacion_v.upper().replace(" ", "")
+        if clasif_up == "N/A":
+            clasif_up = "NA"
+
+        clasificacion_is_exact = clasif_up in CLASIFICACIONES_EXACTAS
+
         sql = f"""
-           SELECT
+            SELECT
                 v.llave_naval,
                 v.cod_bodega,
                 v.cod_dependencia,
@@ -72,57 +93,49 @@ class SegmentacionDbService:
               AND v.estado_linea_norm  = 'activo'
 
               -- filtros tipo "buscador" (parcial)
-              AND (%(dependencia)s = '' OR COALESCE(v.desc_dependencia, v.dependencia) ILIKE %(dependencia_like)s)
+              AND (%(dependencia)s = '' OR v.dependencia ILIKE %(dependencia_like)s)
               AND (%(zona)s = '' OR v.zona ILIKE %(zona_like)s)
               AND (%(ciudad)s = '' OR v.ciudad ILIKE %(ciudad_like)s)
               AND (%(clima)s = '' OR v.clima ILIKE %(clima_like)s)
               AND (%(testeo)s = '' OR COALESCE(v.testeo_fnl,'') ILIKE %(testeo_like)s)
-              AND (%(clasificacion)s = '' OR (%(clasificacion_is_exact)s = TRUE
-              AND UPPER(COALESCE(v.rankin_linea,'')) = %(clasificacion_exact)s) OR (%(clasificacion_is_exact)s = FALSE
-              AND COALESCE(v.rankin_linea,'') ILIKE %(clasificacion_like)s))
 
+              -- clasificación:
+              -- si es exacta (AA/A/B/C/NA) -> compara exacto
+              -- si no, hace ILIKE parcial
+              AND (
+                    %(clasificacion)s = ''
+                    OR (
+                        %(clasificacion_is_exact)s = TRUE
+                        AND UPPER(COALESCE(v.rankin_linea,'')) = %(clasificacion_exact)s
+                    )
+                    OR (
+                        %(clasificacion_is_exact)s = FALSE
+                        AND COALESCE(v.rankin_linea,'') ILIKE %(clasificacion_like)s
+                    )
+              )
             ORDER BY COALESCE(v.desc_dependencia, v.dependencia);
         """
 
-        zona_v = (zona or "").strip()
-        ciudad_v = (ciudad or "").strip()
-        clima_v = (clima or "").strip()
-        dependencia_v = (dependencia or "").strip()
-        testeo_v = (testeo or "").strip()
-        clasificacion_v = (clasificacion or "").strip()
-
-                # Normalización para decidir “exacto”
-        clasif_up = clasificacion_v.upper().replace(" ", "")
-        if clasif_up == "N/A":
-            clasif_up = "NA"
-
-        allowed_exact = {"AA", "A", "B", "C", "NA"}
-
-        clasificacion_is_exact = clasif_up in allowed_exact
-
-        tiendas = self._repo.fetch_all(sql, {
-            "linea_norm": linea_norm,
-
-            "dependencia": dependencia_v,
-            "dependencia_like": f"%{dependencia_v}%",
-
-            "zona": zona_v,
-            "zona_like": f"%{zona_v}%",
-
-            "ciudad": ciudad_v,
-            "ciudad_like": f"%{ciudad_v}%",
-
-            "clima": clima_v,
-            "clima_like": f"%{clima_v}%",
-
-            "testeo": testeo_v,
-            "testeo_like": f"%{testeo_v}%",
-
-            "clasificacion": clasificacion_v,
-            "clasificacion_is_exact": clasificacion_is_exact,
-            "clasificacion_exact": clasif_up,
-            "clasificacion_like": f"%{clasificacion_v}%",
-        })
+        tiendas = self._repo.fetch_all(
+            sql,
+            {
+                "linea_norm": linea_norm,
+                "dependencia": dependencia_v,
+                "dependencia_like": f"%{dependencia_v}%",
+                "zona": zona_v,
+                "zona_like": f"%{zona_v}%",
+                "ciudad": ciudad_v,
+                "ciudad_like": f"%{ciudad_v}%",
+                "clima": clima_v,
+                "clima_like": f"%{clima_v}%",
+                "testeo": testeo_v,
+                "testeo_like": f"%{testeo_v}%",
+                "clasificacion": clasificacion_v,
+                "clasificacion_is_exact": clasificacion_is_exact,
+                "clasificacion_exact": clasif_up,
+                "clasificacion_like": f"%{clasificacion_v}%",
+            },
+        )
 
         return {
             "linea": linea_norm,
@@ -134,18 +147,17 @@ class SegmentacionDbService:
                 "testeo": testeo_v or None,
                 "clasificacion": clasificacion_v or None,
             },
-            "tiendas": tiendas
+            "tiendas": tiendas,
         }
 
     def contar_tiendas_activas_por_linea(self, linea_raw: str) -> int:
         linea_norm = self.normalizar_linea(linea_raw)
-
         sql = f"""
             SELECT COUNT(*) AS n
             FROM {self._view_tiendas} v
             WHERE v.linea_norm = %(linea_norm)s
-            AND v.estado_tienda_norm = 'activo'
-            AND v.estado_linea_norm  = 'activo';
+              AND v.estado_tienda_norm = 'activo'
+              AND v.estado_linea_norm  = 'activo';
         """
         row = self._repo.fetch_one(sql, {"linea_norm": linea_norm})
         return int(row["n"]) if row and row.get("n") is not None else 0
@@ -159,9 +171,10 @@ class SegmentacionDbService:
             return {"existe": False, "segmentacion": None}
 
         sql_head = """
-            SELECT id_segmentacion, id_usuario, fecha_creacion, estado_segmentacion,
-                   referencia, codigo_barras, descripcion, categoria, linea,
-                   tipo_portafolio, precio_unitario, estado_sku, cuento, tipo_inventario
+            SELECT
+                id_segmentacion, id_usuario, fecha_creacion, estado_segmentacion,
+                referencia, codigo_barras, descripcion, categoria, linea,
+                tipo_portafolio, precio_unitario, estado_sku, cuento, tipo_inventario
             FROM segmentacion
             WHERE referencia = %(ref)s
             ORDER BY fecha_creacion DESC
@@ -188,7 +201,7 @@ class SegmentacionDbService:
     # Guardar segmentación (crea nueva cabecera)
     # -------------------------
     def guardar_segmentacion(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        now = datetime.now(ZoneInfo("America/Bogota"))
+        now = datetime.now(TZ_BOGOTA)
 
         ref = (payload.get("referenciaSku") or "").strip()
         if not ref:
@@ -198,7 +211,7 @@ class SegmentacionDbService:
         if not isinstance(detalles, list):
             raise RuntimeError("El campo 'detalle' debe ser una lista.")
 
-        # Construimos lista ACTIVA desde el payload (solo qty > 0)
+        # 1) Lista activa desde payload: solo cantidad > 0
         filas_activo: List[Dict[str, Any]] = []
         total_units = 0
         tiendas_con_cantidad = set()
@@ -209,26 +222,20 @@ class SegmentacionDbService:
             talla = (d.get("talla") or "").strip()
             cantidad = int(d.get("cantidad") or 0)
 
-            if not llave or not talla:
-                continue
-            if cantidad <= 0:
+            if not llave or not talla or cantidad <= 0:
                 continue
 
             total_units += cantidad
             tiendas_con_cantidad.add(llave)
             tallas_usadas.add(talla)
 
-            filas_activo.append({
-                "llave_naval": llave,
-                "talla": talla,
-                "cantidad": cantidad,
-            })
+            filas_activo.append({"llave_naval": llave, "talla": talla, "cantidad": cantidad})
 
         new_keys = {(r["llave_naval"], r["talla"]) for r in filas_activo}
-        nueva_activa = True if len(new_keys) > 0 else False
+        nueva_activa = bool(new_keys)
 
         def _tx(cur):
-            # 1) Id versión activa (MISMA transacción)
+            # 1) Versión activa (misma transacción)
             cur.execute("""
                 SELECT id_version
                 FROM maestra_tiendas_version
@@ -241,10 +248,10 @@ class SegmentacionDbService:
                 raise RuntimeError("No existe versión Activa en maestra_tiendas_version.")
             id_version_activa = int(row["id_version"])
 
-            # 2) Refrescar snapshot (misma conexión/tx)
+            # 2) Refrescar snapshot (misma transacción)
             cur.execute("SELECT * FROM public.refresh_maestra_tiendas_actual();")
 
-            # 3) Tomar la última cabecera ACTIVA (si existe) y bloquearla para evitar carreras
+            # 3) Tomar última cabecera ACTIVA y bloquearla para evitar carreras
             cur.execute("""
                 SELECT id_segmentacion
                 FROM segmentacion
@@ -270,7 +277,7 @@ class SegmentacionDbService:
                 prev_rows = cur.fetchall() or []
                 prev_keys = {(r["llave_naval"], r["talla"]) for r in prev_rows}
 
-            desactivadas = prev_keys - new_keys  # antes >0 y hoy ya no
+            desactivadas = prev_keys - new_keys
 
             # 5) Inactivar cabecera anterior (histórico)
             if last_id:
@@ -315,9 +322,9 @@ class SegmentacionDbService:
             id_seg = int(head_row["id_segmentacion"])
 
             # 7) Insertar detalle:
-            #    - Activos: cantidad>0, estado Activo
-            #    - Desactivadas: cantidad=0, estado Inactivo (para que aparezcan en CSV)
-            filas_insert = []
+            # - Activos: cantidad>0 (Activo)
+            # - Desactivadas: cantidad=0 (Inactivo) para que aparezcan en CSV
+            filas_insert: List[Dict[str, Any]] = []
 
             for r in filas_activo:
                 filas_insert.append({
@@ -326,7 +333,7 @@ class SegmentacionDbService:
                     "talla": r["talla"],
                     "cantidad": int(r["cantidad"]),
                     "estado_detalle": "Activo",
-                    "fecha_actualizacion": now
+                    "fecha_actualizacion": now,
                 })
 
             for (llave, talla) in desactivadas:
@@ -336,7 +343,7 @@ class SegmentacionDbService:
                     "talla": talla,
                     "cantidad": 0,
                     "estado_detalle": "Inactivo",
-                    "fecha_actualizacion": now
+                    "fecha_actualizacion": now,
                 })
 
             if filas_insert:
@@ -350,30 +357,28 @@ class SegmentacionDbService:
                 """, filas_insert)
 
             # 8) segmented_at (badge):
-            #    si NO hay activos, se quita segmented_at
+            # si NO hay activos -> segmented_at NULL
             if nueva_activa:
                 cur.execute("""
                     INSERT INTO public.referencias_vistas (referencia_sku, first_seen, last_seen, segmented_at)
                     VALUES (%(ref)s, %(now)s, %(now)s, %(now)s)
                     ON CONFLICT (referencia_sku)
-                    DO UPDATE SET last_seen = EXCLUDED.last_seen,
-                                  segmented_at = EXCLUDED.segmented_at;
+                    DO UPDATE SET
+                        last_seen = EXCLUDED.last_seen,
+                        segmented_at = EXCLUDED.segmented_at;
                 """, {"ref": ref, "now": now})
             else:
                 cur.execute("""
                     INSERT INTO public.referencias_vistas (referencia_sku, first_seen, last_seen, segmented_at)
                     VALUES (%(ref)s, %(now)s, %(now)s, NULL)
                     ON CONFLICT (referencia_sku)
-                    DO UPDATE SET last_seen = EXCLUDED.last_seen,
-                                  segmented_at = NULL;
+                    DO UPDATE SET
+                        last_seen = EXCLUDED.last_seen,
+                        segmented_at = NULL;
                 """, {"ref": ref, "now": now})
 
-            return {
-                "id_seg": id_seg,
-                "desactivadas_count": len(desactivadas)
-            }
+            return {"id_seg": id_seg, "desactivadas_count": len(desactivadas)}
 
-        # Ejecuta TODO en una sola transacción
         tx_result = self._repo.run_in_transaction(_tx)
 
         return {
@@ -385,13 +390,12 @@ class SegmentacionDbService:
                 "total_unidades": total_units,
                 "tallas_usadas": sorted(list(tallas_usadas)),
                 "desactivadas": int(tx_result["desactivadas_count"]),
-                "is_segmented": nueva_activa
-            }
+                "is_segmented": nueva_activa,
+            },
         }
 
-
     # -------------------------
-    # Dataset para export CSV por fecha/rango
+    # Dataset para export CSV
     # -------------------------
     def export_dataset_todas(self) -> List[Dict[str, Any]]:
         sql = f"""
@@ -418,7 +422,6 @@ class SegmentacionDbService:
                 d.estado_detalle,
                 d.fecha_actualizacion,
 
-                -- datos tienda (desde la vista)
                 t.cod_bodega,
                 t.cod_dependencia,
                 t.dependencia,
@@ -433,14 +436,10 @@ class SegmentacionDbService:
               ON s.id_segmentacion = d.id_segmentacion
             LEFT JOIN {self._view_tiendas} t
               ON t.llave_naval = d.llave_naval
-            WHERE 1=1
             ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
         """
         return self._repo.fetch_all(sql)
 
-    # -------------------------
-    # Dataset para export CSV por fecha/rango (si luego lo vuelves a necesitar)
-    # -------------------------
     def export_dataset_por_rango(self, desde: datetime, hasta: datetime) -> List[Dict[str, Any]]:
         sql = f"""
             SELECT
@@ -459,7 +458,6 @@ class SegmentacionDbService:
                 s.cuento,
                 s.tipo_inventario,
                 s.estado_segmentacion,
-
 
                 d.llave_naval,
                 d.talla,
@@ -486,24 +484,18 @@ class SegmentacionDbService:
             ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
         """
         return self._repo.fetch_all(sql, {"desde": desde, "hasta": hasta})
-    
-    def marcar_y_anotar_referencias_nuevas(self, referencias: List[Dict[str, Any]], dias_nuevo: int = 7) -> List[Dict[str, Any]]:
-        """
-        - Registra/actualiza en Postgres qué referencias han sido vistas por el aplicativo
-          (tabla public.referencias_vistas).
-        - Marca cada referencia con is_new=True si first_seen está dentro de los últimos N días.
 
-        Reglas:
-        - first_seen se conserva.
-        - last_seen se actualiza cada vez que aparece en el dataset.
-        """
-
+    # -------------------------
+    # Referencias nuevas / anotaciones UI
+    # -------------------------
+    def marcar_y_anotar_referencias_nuevas(
+        self, referencias: List[Dict[str, Any]], dias_nuevo: int = 7
+    ) -> List[Dict[str, Any]]:
         if not referencias:
             return referencias
 
-        now = datetime.now(ZoneInfo("America/Bogota"))
+        now = datetime.now(TZ_BOGOTA)
 
-        # 1) Extraer referencias del dataset (sin hardcode de estructura rara)
         ref_list: List[str] = []
         for r in referencias:
             ref = (r.get("referencia") or r.get("referenciaSku") or r.get("Referencia") or "").strip()
@@ -513,42 +505,32 @@ class SegmentacionDbService:
         if not ref_list:
             return referencias
 
-        # 2) Upsert masivo: inserta nuevas, actualiza last_seen si ya existen
         sql_upsert = """
             INSERT INTO public.referencias_vistas (referencia_sku, last_seen)
             VALUES (%(referencia_sku)s, %(last_seen)s)
             ON CONFLICT (referencia_sku)
             DO UPDATE SET last_seen = EXCLUDED.last_seen;
         """
-
         rows = [{"referencia_sku": ref, "last_seen": now} for ref in ref_list]
         self._repo.execute_many(sql_upsert, rows)
 
-        # 3) Consultar cuáles son "nuevas" (first_seen reciente)
         cutoff = now - timedelta(days=int(dias_nuevo))
-
         sql_nuevas = """
             SELECT referencia_sku
             FROM public.referencias_vistas
             WHERE first_seen >= %(cutoff)s
-            AND acknowledged_at IS NULL;
+              AND acknowledged_at IS NULL;
         """
         nuevas_rows = self._repo.fetch_all(sql_nuevas, {"cutoff": cutoff})
-        nuevas_set = { (x.get("referencia_sku") or "").strip() for x in nuevas_rows }
+        nuevas_set = {(x.get("referencia_sku") or "").strip() for x in nuevas_rows}
 
-        # 4) Anotar flag en el dataset para que el frontend lo use
         for r in referencias:
             ref = (r.get("referencia") or "").strip()
-            r["is_new"] = True if ref and ref in nuevas_set else False
+            r["is_new"] = bool(ref and ref in nuevas_set)
 
         return referencias
-    
+
     def anotar_segmentacion_y_conteo(self, referencias: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Anota en el dataset:
-        - is_segmented: bool (fuente de verdad Postgres)
-        - tiendas_activas_segmentadas: int (solo para UI)
-        """
         if not referencias:
             return referencias
 
@@ -566,22 +548,12 @@ class SegmentacionDbService:
         for r in referencias:
             ref = (r.get("referencia") or r.get("referenciaSku") or r.get("Referencia") or "").strip()
             meta = flags.get(ref, {"is_segmented": False, "tiendas_activas_segmentadas": 0})
-
-            r["is_segmented"] = True if meta["is_segmented"] else False
+            r["is_segmented"] = bool(meta["is_segmented"])
             r["tiendas_activas_segmentadas"] = int(meta["tiendas_activas_segmentadas"] or 0)
 
         return referencias
-    
 
     def obtener_estado_y_conteo_segmentacion(self, ref_list: List[str]) -> Dict[str, Dict[str, Any]]:
-        """
-        Fuente de verdad:
-        - Última segmentación por referencia (segmentacion.fecha_creacion DESC)
-        - Detalle activo con cantidad > 0
-        - Tienda activa y línea activa según la vista (self._view_tiendas)
-        Retorna:
-        { referencia: { "is_segmented": bool, "tiendas_activas_segmentadas": int } }
-        """
         if not ref_list:
             return {}
 
@@ -603,21 +575,19 @@ class SegmentacionDbService:
                 JOIN segmentacion_detalle d
                   ON d.id_segmentacion = ls.id_segmentacion
                 JOIN {self._view_tiendas} v
-                    ON v.llave_naval = d.llave_naval
-                    AND v.estado_tienda_norm = 'activo'
-                    AND v.estado_linea_norm  = 'activo'
-                    AND (
-                        COALESCE(NULLIF(TRIM(ls.linea), ''), '') = ''  -- si no hay línea en segmentación, NO filtra por línea
-                        OR v.linea_norm = (
-                                CASE
-                                    WHEN POSITION(' - ' IN COALESCE(ls.linea,'')) > 0
-                                        THEN LOWER(TRIM(SPLIT_PART(ls.linea, ' - ', 2)))
-                                    ELSE LOWER(TRIM(COALESCE(ls.linea,'')))
-                                END
-                        )
-                )
+                  ON v.llave_naval = d.llave_naval
                  AND v.estado_tienda_norm = 'activo'
                  AND v.estado_linea_norm  = 'activo'
+                 AND (
+                        COALESCE(NULLIF(TRIM(ls.linea), ''), '') = ''
+                        OR v.linea_norm = (
+                            CASE
+                                WHEN POSITION(' - ' IN COALESCE(ls.linea,'')) > 0
+                                    THEN LOWER(TRIM(SPLIT_PART(ls.linea, ' - ', 2)))
+                                ELSE LOWER(TRIM(COALESCE(ls.linea,'')))
+                            END
+                        )
+                 )
                 WHERE COALESCE(d.estado_detalle,'Activo') = 'Activo'
                   AND COALESCE(d.cantidad,0) > 0
                 GROUP BY ls.referencia
@@ -643,38 +613,33 @@ class SegmentacionDbService:
 
         # asegurar que todas queden
         for ref in ref_list:
-            if ref not in out:
-                out[ref] = {"is_segmented": False, "tiendas_activas_segmentadas": 0}
+            out.setdefault(ref, {"is_segmented": False, "tiendas_activas_segmentadas": 0})
 
         return out
 
-    
-    # Método para marcar una referencia como segmentada
     def marcar_como_segmentada(self, referencia_sku: str) -> None:
-            ref = (referencia_sku or "").strip()
-            if not ref:
-                return
+        ref = (referencia_sku or "").strip()
+        if not ref:
+            return
 
-            now = datetime.now(ZoneInfo("America/Bogota"))
+        now = datetime.now(TZ_BOGOTA)
 
-            # Upsert: si no existe, la crea; si existe, actualiza segmented_at y last_seen
-            sql = """
-                INSERT INTO public.referencias_vistas (referencia_sku, first_seen, last_seen, segmented_at)
-                VALUES (%(ref)s, %(now)s, %(now)s, %(now)s)
-                ON CONFLICT (referencia_sku)
-                DO UPDATE SET
-                    last_seen = EXCLUDED.last_seen,
-                    segmented_at = EXCLUDED.segmented_at;
-            """
-            self._repo.execute(sql, {"ref": ref, "now": now})
+        sql = """
+            INSERT INTO public.referencias_vistas (referencia_sku, first_seen, last_seen, segmented_at)
+            VALUES (%(ref)s, %(now)s, %(now)s, %(now)s)
+            ON CONFLICT (referencia_sku)
+            DO UPDATE SET
+                last_seen = EXCLUDED.last_seen,
+                segmented_at = EXCLUDED.segmented_at;
+        """
+        self._repo.execute(sql, {"ref": ref, "now": now})
 
     def reset_segmentaciones(self) -> Dict[str, Any]:
         """
         Limpia por completo las tablas de segmentación.
-        Nota: usamos TRUNCATE para reiniciar rápido.
+        Nota: TRUNCATE para reiniciar rápido.
         """
         def _tx(cur):
-            # Si hay FK desde detalle -> cabecera, conviene truncar ambas en el mismo TRUNCATE.
             cur.execute("""
                 TRUNCATE TABLE
                     public.segmentacion_detalle,
@@ -684,6 +649,3 @@ class SegmentacionDbService:
             return {"ok": True, "mensaje": "Segmentaciones reiniciadas correctamente."}
 
         return self._repo.run_in_transaction(_tx)
-
-
-

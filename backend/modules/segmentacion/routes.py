@@ -11,41 +11,40 @@ Notas de arquitectura:
 - SQL Server: solo lectura, vía API .NET (passthrough).
 - Postgres: base operativa del aplicativo (tiendas versionadas, segmentaciones, etc).
 """
-
-from flask import Blueprint, render_template, request, jsonify, send_file
-
 import csv
 import io
-from datetime import datetime, date, timedelta
-from zoneinfo import ZoneInfo
-
-import os
 import re
 import time
 import unicodedata
-import json
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    jsonify,
+    render_template,
+    request,
+    send_file,
+    send_from_directory,
+)
 from werkzeug.utils import secure_filename
-from flask import current_app, request, abort, send_from_directory
-
-from datetime import datetime, timezone
-from backend.modules.segmentacion.app_cache_service import AppCacheService
 from backend.modules.auth.decorators import login_required, role_required
-
-
+from backend.modules.segmentacion.app_cache_service import AppCacheService
+from backend.modules.segmentacion.services import SegmentacionService
+from backend.modules.segmentacion.segmentacion_db_service import SegmentacionDbService
+from backend.repositories.postgres_repository import PostgresRepository
 from backend.config.settings import (
-    SQLSERVER_API_URL,
-    SEGMENTACION_CARDS_PER_PAGE,
+    DEFAULT_TALLAS_MVP,
     IMAGES_BASE_URL,
+    LINEAS_TALLAS_FIJAS,
     POSTGRES_DSN,
     POSTGRES_TIENDAS_VIEW,
-    DEFAULT_TALLAS_MVP,
-    LINEAS_TALLAS_FIJAS,
+    SEGMENTACION_CARDS_PER_PAGE,
+    SQLSERVER_API_URL,
 )
-
-from backend.modules.segmentacion.services import SegmentacionService
-from backend.repositories.postgres_repository import PostgresRepository
-from backend.modules.segmentacion.segmentacion_db_service import SegmentacionDbService
 
 
 segmentacion_bp = Blueprint(
@@ -56,6 +55,15 @@ segmentacion_bp = Blueprint(
 
 CACHE_KEY_REFERENCIAS = "referencias_sqlserver"
 CACHE_TTL_SECONDS = 120  # 2 min
+TZ_BOGOTA = ZoneInfo("America/Bogota")
+
+def _pg_repo() -> PostgresRepository:
+    return PostgresRepository(POSTGRES_DSN)
+
+def _svc_pg(repo: PostgresRepository) -> SegmentacionDbService:
+    return SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+
+
 
 @segmentacion_bp.route("/", methods=["GET"])
 @login_required
@@ -66,7 +74,7 @@ def vista_segmentacion():
     - Renderiza HTML con el dataset embebido (script JSON)
     - Pasa configuración al frontend vía data-attributes (sin hardcode en JS)
     """
-    repo = PostgresRepository(POSTGRES_DSN)
+    repo = _pg_repo()
     cache = AppCacheService(repo)
 
     cached = cache.get(CACHE_KEY_REFERENCIAS)
@@ -111,6 +119,7 @@ def vista_segmentacion():
     )
 
 @segmentacion_bp.get("/utilidades")
+@login_required
 def vista_utilidades():
     """
     Vista Utilidades:
@@ -120,8 +129,9 @@ def vista_utilidades():
     return render_template("utilidades.html")
 
 @segmentacion_bp.post("/api/cache/referencias/refresh")
+@login_required
 def api_refresh_cache_referencias():
-    repo = PostgresRepository(POSTGRES_DSN)
+    repo = _pg_repo()
     cache = AppCacheService(repo)
 
     servicio = SegmentacionService(SQLSERVER_API_URL)
@@ -134,14 +144,15 @@ def api_refresh_cache_referencias():
     return jsonify({"ok": True, "mensaje": "Cache de referencias actualizado", "count": len(referencias)})
 
 @segmentacion_bp.post("/api/referencias/ack")
+@login_required
 def api_ack_referencia():
     payload = request.get_json(silent=True) or {}
     referencia = (payload.get("referencia") or "").strip()
     if not referencia:
         return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
 
-    repo = PostgresRepository(POSTGRES_DSN)
-    now = datetime.now(ZoneInfo("America/Bogota"))
+    repo = _pg_repo()
+    now = datetime.now(TZ_BOGOTA)
 
     repo.execute("""
         UPDATE public.referencias_vistas
@@ -152,13 +163,14 @@ def api_ack_referencia():
     return jsonify({"ok": True})
 
 @segmentacion_bp.post("/api/referencias/segmentar")
+@login_required
 def api_segmentar_referencia():
     payload = request.get_json(silent=True) or {}
     referencia_sku = (payload.get("referencia") or "").strip()
     if not referencia_sku:
         return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
 
-    repo = PostgresRepository(POSTGRES_DSN)
+    repo = _pg_repo()
     svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
 
     # Marcamos como segmentada en la base de datos
@@ -169,6 +181,7 @@ def api_segmentar_referencia():
 
 
 @segmentacion_bp.get("/api/tiendas/activas")
+@login_required
 def api_tiendas_activas():
     """
     Retorna tiendas activas para una línea comercial.
@@ -192,7 +205,7 @@ def api_tiendas_activas():
     testeo = (request.args.get("testeo") or "").strip()
     clasificacion = (request.args.get("clasificacion") or "").strip()
 
-    repo = PostgresRepository(POSTGRES_DSN)
+    repo = _pg_repo()
     svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
 
     data = svc.tiendas_activas_por_linea(
@@ -208,6 +221,7 @@ def api_tiendas_activas():
 
 
 @segmentacion_bp.get("/api/segmentaciones/ultima")
+@login_required
 def api_ultima_segmentacion():
     """
     Retorna la última segmentación guardada para una referenciaSku.
@@ -219,7 +233,7 @@ def api_ultima_segmentacion():
     if not referencia_sku:
         return jsonify({"ok": False, "error": "Falta query param: referenciaSku"}), 400
 
-    repo = PostgresRepository(POSTGRES_DSN)
+    repo = _pg_repo()
     svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
 
     data = svc.ultima_segmentacion(referencia_sku)
@@ -227,6 +241,7 @@ def api_ultima_segmentacion():
 
 
 @segmentacion_bp.post("/api/segmentaciones")
+@login_required
 def api_guardar_segmentacion():
     """
     Guarda una segmentación en Postgres.
@@ -241,7 +256,7 @@ def api_guardar_segmentacion():
     """
     payload = request.get_json(silent=True) or {}
 
-    repo = PostgresRepository(POSTGRES_DSN)
+    repo = _pg_repo()
     svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
 
     result = svc.guardar_segmentacion(payload)
@@ -325,6 +340,7 @@ def _rebuild_index_if_needed(force: bool = False, ttl_seconds: int = 60) -> None
 
 
 @segmentacion_bp.get("/api/imagenes/referencia")
+@login_required
 def api_imagen_por_referencia():
     """
     Devuelve la imagen asociada a una referencia.
@@ -352,6 +368,7 @@ def api_imagen_por_referencia():
     return send_from_directory(img_dir, filename)
 
 @segmentacion_bp.post("/api/imagenes/upload")
+@login_required
 def api_upload_imagenes():
     """
     Sube una o varias imágenes y las guarda en:
@@ -436,7 +453,7 @@ def api_reset_segmentaciones():
     Reinicia (TRUNCATE) las tablas de segmentación.
     Acción destructiva: solo ADMIN.
     """
-    repo = PostgresRepository(POSTGRES_DSN)
+    repo = _pg_repo()
     svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
 
     result = svc.reset_segmentaciones()
@@ -444,6 +461,7 @@ def api_reset_segmentaciones():
 
 
 @segmentacion_bp.get("/api/export/csv")
+@login_required
 def api_export_csv():
     """
     Exporta CSV SOLO de lo modificado en un rango de tiempo, usando
@@ -454,7 +472,7 @@ def api_export_csv():
     - ?desde=ISO&hasta=ISO -> exporta rango exacto
     Default: hoy (America/Bogota)
     """
-    repo = PostgresRepository(POSTGRES_DSN)
+    repo = _pg_repo()
     svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
 
     rows = svc.export_dataset_todas()
@@ -540,5 +558,5 @@ def api_export_csv():
     data_bytes = sio.getvalue().encode("utf-8-sig")
     file_obj = io.BytesIO(data_bytes)
 
-    filename = f"segmentaciones_todas_{datetime.now(ZoneInfo('America/Bogota')).date().isoformat()}.csv"
+    filename = f"segmentaciones_todas_{datetime.now(TZ_BOGOTA).date().isoformat()}.csv"
     return send_file(file_obj, as_attachment=True, download_name=filename, mimetype="text/csv")

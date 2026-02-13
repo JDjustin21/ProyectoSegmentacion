@@ -28,6 +28,33 @@
     return (v || "").toString().trim();
   }
 
+  function sortTallas(tallas) {
+    const baseOrder = ["XS", "S", "M", "L", "XL", "XXL"];
+
+    const arr = Array.isArray(tallas) ? tallas.map(norm).filter(Boolean) : [];
+
+    // separa: conocidas vs desconocidas
+    const known = [];
+    const unknown = [];
+
+    arr.forEach(t => {
+      const up = t.toUpperCase();
+      if (baseOrder.includes(up)) known.push(up);
+      else unknown.push(t); // conserva original por si viene "ME", "2XL", etc.
+    });
+
+    // ordena conocidas según baseOrder
+    known.sort((a, b) => baseOrder.indexOf(a) - baseOrder.indexOf(b));
+
+    // desconocidas al final, orden alfabético
+    const unknownSorted = unknown
+      .map(norm)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    return [...known, ...unknownSorted];
+  }
+
   function isoNow() {
     return new Date().toISOString();
   }
@@ -92,7 +119,7 @@
 
     const arr = Array.isArray(tiendas) ? tiendas : [];
 
-    setDatalistOptions(listDep, arr.map(t => t.desc_dependencia || t.dependencia));
+    setDatalistOptions(listDep, arr.map(t => t.dependencia));
     setDatalistOptions(listZona, arr.map(t => t.zona));
     setDatalistOptions(listClima, arr.map(t => t.clima));
     setDatalistOptions(listTesteo, arr.map(t => t.testeo || t.testeo_fnl));
@@ -567,9 +594,7 @@ function toNumberOrZero(v) {
       payload.precioUnitario ?? payload.precio_unitario ?? payload.PrecioUnitario
     );
 
-    state.ref.tallasFinal = Array.isArray(payload.tallasFinal)
-      ? payload.tallasFinal.map(norm).filter(Boolean)
-      : [];
+    state.ref.tallasFinal = sortTallas(payload.tallasFinal);
     state.ref.tallasConteo = payload.tallasConteo || null;
 
     // Reset modal
