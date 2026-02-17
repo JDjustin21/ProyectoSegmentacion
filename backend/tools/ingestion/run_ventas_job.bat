@@ -11,6 +11,7 @@ set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%..\..\..") do set "PROJECT_ROOT=%%~fI"
 set "ENV_FILE=%PROJECT_ROOT%\.env"
 
+
 REM Rutas relativas al .bat (sin hardcodear el path del proyecto)
 set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%..\..\..") do set "PROJECT_ROOT=%%~fI"

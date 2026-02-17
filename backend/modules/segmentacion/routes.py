@@ -45,6 +45,7 @@ from backend.config.settings import (
     SEGMENTACION_CARDS_PER_PAGE,
     SQLSERVER_API_URL,
 )
+import backend.config.settings as settings
 
 
 segmentacion_bp = Blueprint(
@@ -239,6 +240,39 @@ def api_ultima_segmentacion():
     data = svc.ultima_segmentacion(referencia_sku)
     return jsonify({"ok": True, "data": data})
 
+
+@segmentacion_bp.route("/api/metricas", methods=["GET"])
+@login_required
+def api_metricas():
+    try:
+        referencia_sku = (request.args.get("referenciaSku") or "").strip()
+        llave_naval = (request.args.get("llave_naval") or "").strip() or None
+
+        if not referencia_sku:
+            return jsonify({"ok": False, "error": "Falta referenciaSku"}), 400
+
+        repo = PostgresRepository(settings.POSTGRES_DSN)
+
+        resumen, detalle = repo.obtener_metricas_por_referencia(
+            referencia_sku=referencia_sku,
+            llave_naval=llave_naval,
+            view_cpd_talla=settings.METRICAS_CPD_TALLA_VIEW,
+            view_cpd_tienda=settings.METRICAS_CPD_TIENDA_VIEW,
+            view_prom_talla=settings.METRICAS_VENTA_PROM_TALLA_VIEW,
+            view_prom_tienda=settings.METRICAS_VENTA_PROM_TIENDA_VIEW,
+        )
+
+        return jsonify({
+            "ok": True,
+            "data": {
+                "referenciaSku": referencia_sku,
+                "resumenPorTienda": resumen,
+                "detallePorTalla": detalle,
+            }
+        })
+
+    except Exception as ex:
+        return jsonify({"ok": False, "error": str(ex)}), 500
 
 @segmentacion_bp.post("/api/segmentaciones")
 @login_required

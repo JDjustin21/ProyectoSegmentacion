@@ -20,6 +20,7 @@
   const API_TIENDAS = "/segmentacion/api/tiendas/activas";
   const API_ULTIMA = "/segmentacion/api/segmentaciones/ultima";
   const API_GUARDAR = "/segmentacion/api/segmentaciones";
+  const API_METRICAS = "/segmentacion/api/metricas";
 
   // =========================
   // 2) Helpers puros
@@ -214,6 +215,10 @@
   const state = {
     sessionStartIso: null,
     fetchSeq: 0, // evita respuestas cruzadas
+    metricas: {
+      resumenByLlave: {},        // llave_naval -> { cpd_total, venta_promedio_mensual_total, ... }
+      detalleByLlaveTalla: {},   // llave_naval -> talla -> [{ean, cpd, venta_promedio_mensual}, ...]
+    },
 
     ref: {
       referenciaSku: "",
@@ -258,9 +263,33 @@
   if (e === "moda") return "bg-warning text-dark";
   return "bg-secondary";
 }
+
 function toNumberOrZero(v) {
   const n = Number((v ?? "").toString().replace(",", ".").trim());
   return Number.isFinite(n) ? n : 0;
+}
+
+function toNumberOrNull(v) {
+  if (v === null || v === undefined) return null;
+  const s = (v ?? "").toString().trim();
+  if (!s) return null;
+
+  // soporta "0E-20" y similares
+  const n = Number(s.replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+function getMetricsDecimals(dom) {
+  const raw = dom?.modalEl?.dataset?.metricsDecimals;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : 1;
+}
+
+function fmtFixed(v, decimals, empty = "—") {
+  if (v === null || v === undefined) return empty;
+  const n = Number((v ?? "").toString().replace(",", ".").trim());
+  if (!Number.isFinite(n)) return empty;
+  return n.toFixed(decimals);
 }
 
   // =========================
@@ -300,9 +329,11 @@ function toNumberOrZero(v) {
       const rankinLinea = norm(t.rankin_linea || "");
       const testeoFnl = norm(t.testeo || t.testeo_fnl || "");
 
-      const ventaProm = norm(t.venta_promedio || "—");
-      const cpd = norm(t.cpd || "—");
-      const rot = norm(t.rotacion || "—");
+      const decimals = getMetricsDecimals(dom);
+
+      const resumen = state.metricas?.resumenByLlave?.[llave] || null;
+      const cpdTienda = resumen ? fmtFixed(resumen.cpd_total, decimals) : "—";
+      const ventaPromTienda = resumen ? fmtFixed(resumen.venta_promedio_mensual_total, decimals) : "—";
 
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
 
@@ -311,6 +342,12 @@ function toNumberOrZero(v) {
       const tallasHtml = tallas.map(talla => {
         const keyTalla = norm(talla);
         const qty = Number(state.cantidades[llave][keyTalla] || 0);
+
+        const tallaUp = keyTalla.toUpperCase();
+        const rows = state.metricas?.detalleByLlaveTalla?.[llave]?.[tallaUp] || [];
+        const row0 = rows[0] || null; // normalmente 1 fila por talla+ean
+        const ean = row0 ? norm(row0.ean) : "";
+        const cpdTalla = row0 ? fmtFixed(row0.cpd, decimals) : "—";
 
         const disabledAttr = isActive ? "" : "disabled";
         const disabledClass = isActive ? "" : "is-disabled";
@@ -329,6 +366,9 @@ function toNumberOrZero(v) {
               data-talla="${keyTalla}"
               ${isActive ? "" : "disabled"}
             />
+            <div class="detalle-metricas-talla">
+              <div class="small">CPD: ${cpdTalla}</div>
+            </div>
           </div>
         `;
 
@@ -364,11 +404,10 @@ function toNumberOrZero(v) {
             </div>
           </div>
 
-          <!-- 5) Rotación (placeholder por ahora) -->
+          <!-- 5) Métricas tienda -->
           <div class="detalle-col">
-            <div class="small">Índice: ${rot}</div>
-            <div class="small">Venta Promedio: ${ventaProm}</div>
-            <div class="small">CPD: ${cpd}</div>
+            <div class="small">Venta Promedio: ${ventaPromTienda}</div>
+            <div class="small">CPD tienda: ${cpdTienda}</div>
           </div>
         </div>
       `;
@@ -422,6 +461,38 @@ function toNumberOrZero(v) {
     state.tiendas = extractListDeep(json.data);
     updateModalDatalists(dom, state.tiendas);
   }
+
+  async function cargarMetricas(dom) {
+  const q = buildQuery({ referenciaSku: state.ref.referenciaSku });
+  const url = `${API_METRICAS}?${q}`;
+  const json = await fetchJson(url);
+  if (!json.ok) throw new Error(json.error || "Error consultando métricas");
+
+  const data = json.data || {};
+  const resumen = Array.isArray(data.resumenPorTienda) ? data.resumenPorTienda : [];
+  const detalle = Array.isArray(data.detallePorTalla) ? data.detallePorTalla : [];
+
+  const resumenByLlave = {};
+  resumen.forEach(r => {
+    const llave = norm(r.llave_naval);
+    if (!llave) return;
+    resumenByLlave[llave] = r;
+  });
+
+  const detalleByLlaveTalla = {};
+  detalle.forEach(r => {
+    const llave = norm(r.llave_naval);
+    const talla = norm(r.talla).toUpperCase();
+    if (!llave || !talla) return;
+
+    if (!detalleByLlaveTalla[llave]) detalleByLlaveTalla[llave] = {};
+    if (!detalleByLlaveTalla[llave][talla]) detalleByLlaveTalla[llave][talla] = [];
+    detalleByLlaveTalla[llave][talla].push(r);
+  });
+
+  state.metricas = { resumenByLlave, detalleByLlaveTalla };
+}
+
 
   // =========================
   // 9) Cargar última segmentación
@@ -660,7 +731,10 @@ function toNumberOrZero(v) {
       // 2) Cargar última segmentación
       await cargarUltimaSegmentacion();
 
-      // 3) Render
+      // 3) métricas
+      await cargarMetricas(dom);
+
+      // 4) render
       renderTiendas(dom);
 
     } catch (err) {
