@@ -262,35 +262,78 @@
   if (e === "inactivo") return "bg-danger";
   if (e === "moda") return "bg-warning text-dark";
   return "bg-secondary";
-}
+  }
 
-function toNumberOrZero(v) {
-  const n = Number((v ?? "").toString().replace(",", ".").trim());
-  return Number.isFinite(n) ? n : 0;
-}
+  function toNumberOrZero(v) {
+    const n = Number((v ?? "").toString().replace(",", ".").trim());
+    return Number.isFinite(n) ? n : 0;
+  }
 
-function toNumberOrNull(v) {
-  if (v === null || v === undefined) return null;
-  const s = (v ?? "").toString().trim();
-  if (!s) return null;
+  function toNumberOrNull(v) {
+    if (v === null || v === undefined) return null;
+    const s = (v ?? "").toString().trim();
+    if (!s) return null;
 
-  // soporta "0E-20" y similares
-  const n = Number(s.replace(",", "."));
-  return Number.isFinite(n) ? n : null;
-}
+    // soporta "0E-20" y similares
+    const n = Number(s.replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
 
-function getMetricsDecimals(dom) {
-  const raw = dom?.modalEl?.dataset?.metricsDecimals;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) ? n : 1;
-}
+  function getMetricsDecimals(dom) {
+    const raw = dom?.modalEl?.dataset?.metricsDecimals;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : 1;
+  }
 
-function fmtFixed(v, decimals, empty = "—") {
-  if (v === null || v === undefined) return empty;
-  const n = Number((v ?? "").toString().replace(",", ".").trim());
-  if (!Number.isFinite(n)) return empty;
-  return n.toFixed(decimals);
-}
+  function fmtFixed(v, decimals, empty = "—") {
+    if (v === null || v === undefined) return empty;
+    const n = Number((v ?? "").toString().replace(",", ".").trim());
+    if (!Number.isFinite(n)) return empty;
+    return n.toFixed(decimals);
+  }
+
+  function calcularMetricaTotal(metrica) {
+    const tiendas = Array.isArray(state.tiendas) ? state.tiendas : [];
+    let total = 0;
+
+      // Sumar el CPD total o la venta total de las tiendas activas
+    tiendas.forEach(t => {
+      const llave = norm(t.llave_naval);
+      if (!llave || !isStoreActive(llave)) return; // Solo contar tiendas activas
+
+      const resumen = state.metricas?.resumenByLlave?.[llave] || null;
+      console.log("Resumen de tienda:", llave, resumen);
+        
+      if (resumen) {
+        if (metrica === "cpd") {
+          total += toNumberOrZero(resumen.cpd_total);
+        } else if (metrica === "venta") {
+          total += toNumberOrZero(resumen.venta_promedio_mensual_total);
+        }
+      }
+    });
+
+    return total;
+  }
+
+    // Actualizamos los valores de las métricas en el DOM
+  function calcularYActualizarMetricas() {
+
+    const cpdTotal = calcularMetricaTotal("cpd");
+    const ventaTotal = calcularMetricaTotal("venta");
+      // Encontramos los elementos del HTML donde se mostrarán las métricas
+    const cpdTotalEl = document.getElementById("cpd-total");
+    const ventaTotalEl = document.getElementById("venta-total");
+
+      // Si existen los elementos, actualizamos sus valores
+    if (cpdTotalEl) {
+      cpdTotalEl.textContent = fmtFixed(cpdTotal, 1);
+    }
+
+    if (ventaTotalEl) {
+      ventaTotalEl.textContent = fmtFixed(ventaTotal, 1);
+    }
+  }
 
   // =========================
   // 6) Render: tiendas + tallas
@@ -318,6 +361,7 @@ function fmtFixed(v, decimals, empty = "—") {
         <div class="detalle-col">Rotación Hist.</div>
       </div>
     `;
+
 
     const html = tiendas.map(t => {
       const llave = norm(t.llave_naval);
@@ -736,6 +780,9 @@ function fmtFixed(v, decimals, empty = "—") {
 
       // 4) render
       renderTiendas(dom);
+
+      // 5) actualizar métricas en header (CPD total, venta total)
+      calcularYActualizarMetricas();
 
     } catch (err) {
       setError(dom, err?.message || "Error cargando detalle.");

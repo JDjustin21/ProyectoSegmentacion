@@ -101,6 +101,20 @@ html, body{
   min-width: 0;
 }
 
+.detalle-metricas-top-right {
+  text-align: right;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.metric-item {
+  margin-bottom: 5px;
+}
+
+.metric-item strong {
+  font-weight: bold;
+}
+
 .detalle-metricas-title{
   font-size: 12px;
   opacity: .75;
