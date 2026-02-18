@@ -30,10 +30,17 @@ def compute_sha256(file_path: str, chunk_size: int) -> str:
 def norm_header_cell(v: str) -> str:
     """
     Normaliza encabezados:
+    - quita BOM
+    - quita comillas
     - trim
     - uppercase
     """
-    return (v or "").strip().upper()
+    s = (v or "")
+    s = s.replace("\ufeff", "")      # BOM unicode
+    s = s.replace("\ufffe", "")
+    s = s.strip().strip('"').strip("'")
+    return s.upper()
+
 
 
 def parse_tsv_lines(
@@ -42,27 +49,38 @@ def parse_tsv_lines(
     delimiter: str,
     expected_headers: List[str],
 ) -> Tuple[List[str], int]:
-    """
-    Lee header y valida que tenga TODAS las columnas esperadas.
-    Retorna: (headers_en_archivo_normalizados, numero_columnas)
-    """
+
+    expected_norm = [norm_header_cell(x) for x in expected_headers]
+    expected_set = set(expected_norm)
+
+    # pistas para detectar header real
+    must_have = {norm_header_cell("ORIGEN"), norm_header_cell("EAN"), norm_header_cell("FECHA_MVTO")}
+
     with open(file_path, "r", encoding=encoding, errors="replace") as f:
-        first_line = f.readline()
-        if not first_line:
-            raise ValueError("El archivo está vacío; no hay encabezado.")
+        for line_idx in range(1, 51):  # busca en las primeras 50 líneas
+            line = f.readline()
+            if not line:
+                break
 
-        raw_headers = [norm_header_cell(x) for x in first_line.rstrip("\n\r").split(delimiter)]
-        if len(raw_headers) < 2:
-            raise ValueError("Encabezado inválido: parece que el separador/delimitador no es correcto.")
+            raw_parts = line.rstrip("\n\r").split(delimiter)
+            raw_headers = [norm_header_cell(x) for x in raw_parts if x is not None]
 
-        expected_set = set(norm_header_cell(x) for x in expected_headers)
-        got_set = set(raw_headers)
+            # descarta líneas que no parecen header
+            if len(raw_headers) < 5:
+                continue
 
-        missing = sorted(list(expected_set - got_set))
-        if missing:
-            raise ValueError(f"Faltan columnas en el header del TXT: {missing}")
+            got_set = set(raw_headers)
 
-        return raw_headers, len(raw_headers)
+            # regla: debe contener estas 3, o al menos “muchas” columnas esperadas
+            hits = len(expected_set.intersection(got_set))
+            if must_have.issubset(got_set) or hits >= 10:
+                missing = sorted(list(expected_set - got_set))
+                if missing:
+                    raise ValueError(f"Header encontrado en línea {line_idx}, pero faltan columnas: {missing}")
+                return raw_headers, len(raw_headers)
+
+    raise ValueError("No se encontró un encabezado válido en las primeras 50 líneas del archivo.")
+
 
 
 def build_header_index(headers_in_file: List[str]) -> dict:
@@ -78,15 +96,13 @@ def build_header_index(headers_in_file: List[str]) -> dict:
 
 
 def safe_get(parts: List[str], idx: Optional[int]) -> str:
-    """
-    Obtiene una celda por índice.
-    Si no existe, devuelve ''.
-    """
     if idx is None:
         return ""
     if idx < 0 or idx >= len(parts):
         return ""
-    return (parts[idx] or "").strip()
+    v = (parts[idx] or "").strip()
+    # Postgres NO permite NUL
+    return v.replace("\x00", "")
 
 
 def get_active_version_hash(cur) -> Optional[str]:
@@ -262,13 +278,27 @@ def load_staging_raw(
             total_rows += 1
 
             if len(batch) >= batch_size:
-                psycopg2.extras.execute_values(cur, insert_sql, batch, page_size=batch_size)
-                batch.clear()
+                try:
+                    psycopg2.extras.execute_values(cur, insert_sql, batch, page_size=batch_size)
+                    batch.clear()
+                except Exception as ex:
+                    # Diagnóstico: última fila que íbamos a insertar
+                    last = batch[-1] if batch else None
+                    # last = (id_version, line_no, *cols)
+                    bad_line_no = last[1] if last else None
+                    print(f"[INGEST][ERROR] Falló INSERT staging en line_no={bad_line_no}: {ex}", file=sys.stderr)
+                    raise
 
     if batch:
-        psycopg2.extras.execute_values(cur, insert_sql, batch, page_size=batch_size)
+        try:
+            psycopg2.extras.execute_values(cur, insert_sql, batch, page_size=batch_size)
+        except Exception as ex:
+            last = batch[-1] if batch else None
+            bad_line_no = last[1] if last else None
+            print(f"[INGEST][ERROR] Falló INSERT staging (final) en line_no={bad_line_no}: {ex}", file=sys.stderr)
+            raise
 
-    return total_rows
+        return total_rows
 
 
 def stage_to_final(cur, id_version_ventas: int) -> int:

@@ -292,47 +292,35 @@
     return n.toFixed(decimals);
   }
 
-  function calcularMetricaTotal(metrica) {
-    const tiendas = Array.isArray(state.tiendas) ? state.tiendas : [];
-    let total = 0;
 
-      // Sumar el CPD total o la venta total de las tiendas activas
-    tiendas.forEach(t => {
-      const llave = norm(t.llave_naval);
-      if (!llave || !isStoreActive(llave)) return; // Solo contar tiendas activas
-
-      const resumen = state.metricas?.resumenByLlave?.[llave] || null;
-      console.log("Resumen de tienda:", llave, resumen);
-        
-      if (resumen) {
-        if (metrica === "cpd") {
-          total += toNumberOrZero(resumen.cpd_total);
-        } else if (metrica === "venta") {
-          total += toNumberOrZero(resumen.venta_promedio_mensual_total);
-        }
-      }
-    });
-
-    return total;
-  }
 
     // Actualizamos los valores de las métricas en el DOM
   function calcularYActualizarMetricas() {
 
-    const cpdTotal = calcularMetricaTotal("cpd");
-    const ventaTotal = calcularMetricaTotal("venta");
-      // Encontramos los elementos del HTML donde se mostrarán las métricas
+    const { resumenByLlave } = state.metricas;
+
+    // Inicializamos los totales
+    let totalCPD = 0;
+    let totalVenta = 0;
+
+    // Sumamos las métricas de las tiendas filtradas
+    const tiendasFiltradas = Array.isArray(state.tiendas) ? state.tiendas : [];
+    tiendasFiltradas.forEach(tienda => {
+      const llave = norm(tienda.llave_naval);
+      if (!llave || !resumenByLlave[llave]) return;
+
+      const resumen = resumenByLlave[llave];
+
+      totalCPD += toNumberOrZero(resumen.cpd_total);
+      totalVenta += toNumberOrZero(resumen.venta_promedio_mensual_total);
+    });
+
+    // Actualizamos las métricas en el DOM
     const cpdTotalEl = document.getElementById("cpd-total");
     const ventaTotalEl = document.getElementById("venta-total");
 
-      // Si existen los elementos, actualizamos sus valores
-    if (cpdTotalEl) {
-      cpdTotalEl.textContent = fmtFixed(cpdTotal, 1);
-    }
-
-    if (ventaTotalEl) {
-      ventaTotalEl.textContent = fmtFixed(ventaTotal, 1);
-    }
+    if (cpdTotalEl) cpdTotalEl.textContent = fmtFixed(totalCPD, 1);
+    if (ventaTotalEl) ventaTotalEl.textContent = fmtFixed(totalVenta, 1);
   }
 
   // =========================
@@ -504,6 +492,8 @@
 
     state.tiendas = extractListDeep(json.data);
     updateModalDatalists(dom, state.tiendas);
+
+    await cargarMetricas(dom);
   }
 
   async function cargarMetricas(dom) {
@@ -535,6 +525,7 @@
   });
 
   state.metricas = { resumenByLlave, detalleByLlaveTalla };
+  calcularYActualizarMetricas(dom);
 }
 
 
@@ -775,14 +766,10 @@
       // 2) Cargar última segmentación
       await cargarUltimaSegmentacion();
 
-      // 3) métricas
-      await cargarMetricas(dom);
-
       // 4) render
       renderTiendas(dom);
 
       // 5) actualizar métricas en header (CPD total, venta total)
-      calcularYActualizarMetricas();
 
     } catch (err) {
       setError(dom, err?.message || "Error cargando detalle.");
@@ -815,26 +802,26 @@
       renderTiendas(dom);
     });
 
-    const refetch = async () => {
-      const mySeq = ++state.fetchSeq;
+  async function refetch() {
+    const dom = getDom();
+    setError(dom, "");
+    setLoading(dom, true);
 
-      setError(dom, "");
-      setLoading(dom, true);
+    try {
+        // Llamar a la API para cargar las tiendas filtradas
+        await cargarTiendas(dom); // Primero cargamos las tiendas filtradas
 
-      try {
-        await cargarTiendas(dom);
-
-        // Si ya hubo otra búsqueda después, ignoramos esta respuesta
-        if (mySeq !== state.fetchSeq) return;
-
+        // Llamamos para renderizar las tiendas filtradas
         renderTiendas(dom);
 
-      } catch (err) {
+        calcularYActualizarMetricas(dom); // Actualizamos las métricas según las tiendas filtradas
+
+    } catch (err) {
         setError(dom, err?.message || "Error filtrando tiendas.");
-      } finally {
-        if (mySeq === state.fetchSeq) setLoading(dom, false);
-      }
-    };
+    } finally {
+        setLoading(dom, false);
+    }
+}
 
     const refetchDebounced = debounce(refetch, 250);
 
@@ -850,6 +837,8 @@
       if (!input) return;
       try { input.select(); } catch {}
     });
+
+
     dom.tiendasContainer.addEventListener("input", (ev) => {
       const input = ev.target.closest(".detalle-qty-box");
       if (!input) return;
@@ -906,8 +895,22 @@
 
     // Limpiar = limpia filtros + cantidades + recarga
     dom.btnLimpiar?.addEventListener("click", async () => {
-      limpiarFiltros(dom);
-      await refetch();
+        // Limpiar filtros
+        limpiarFiltros(dom);
+        
+        // Limpiar métricas
+        setError(dom, "");
+        setLoading(dom, true);
+
+        try {
+            await cargarTiendas(dom); // Recargar tiendas sin filtros
+            await cargarMetricas(dom); // Cargar métricas
+            renderTiendas(dom); // Renderizar las tiendas
+        } catch (err) {
+            setError(dom, err?.message || "Error al limpiar filtros.");
+        } finally {
+            setLoading(dom, false);
+        }
     });
 
     dom.btnPresetSku?.addEventListener("click", () => {
