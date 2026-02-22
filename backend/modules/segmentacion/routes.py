@@ -19,6 +19,7 @@ import unicodedata
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import traceback
 
 from flask import (
     Blueprint,
@@ -88,9 +89,17 @@ def vista_segmentacion():
         got_lock = cache.try_lock(LOCK_KEY)
         if got_lock:
             try:
-                servicio = SegmentacionService(SQLSERVER_API_URL)
-                referencias = servicio.obtener_referencias()
-                cache.set(CACHE_KEY_REFERENCIAS, referencias)
+                try:
+                    servicio = SegmentacionService(SQLSERVER_API_URL)
+                    referencias = servicio.obtener_referencias()
+                    cache.set(CACHE_KEY_REFERENCIAS, referencias)
+
+                except Exception as ex:
+                    # Si SQL Server API falla (VPN caída), NO tumbes la vista.
+                    # Usa cache (aunque esté viejo) o lista vacía para poder entrar al módulo.
+                    current_app.logger.exception("Fallo SQL Server API obteniendo referencias: %s", ex)
+                    referencias = (cached or {}).get("payload") or []
+            
             finally:
                 cache.unlock(LOCK_KEY)
         else:
@@ -100,9 +109,13 @@ def vista_segmentacion():
 
             # fallback extremo: si por alguna razón sigue vacío, refrescamos igual
             if not referencias:
-                servicio = SegmentacionService(SQLSERVER_API_URL)
-                referencias = servicio.obtener_referencias()
-                cache.set(CACHE_KEY_REFERENCIAS, referencias)
+                try:
+                    servicio = SegmentacionService(SQLSERVER_API_URL)
+                    referencias = servicio.obtener_referencias()
+                    cache.set(CACHE_KEY_REFERENCIAS, referencias)
+                except Exception as ex:
+                    current_app.logger.exception("Fallo SQL Server API en fallback extremo: %s", ex)
+                    referencias = []
 
     svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
     referencias = svc_pg.marcar_y_anotar_referencias_nuevas(referencias, dias_nuevo=7)
@@ -260,6 +273,8 @@ def api_metricas():
             view_cpd_tienda=settings.METRICAS_CPD_TIENDA_VIEW,
             view_prom_talla=settings.METRICAS_VENTA_PROM_TALLA_VIEW,
             view_prom_tienda=settings.METRICAS_VENTA_PROM_TIENDA_VIEW,
+            view_rotacion_talla=settings.METRICAS_ROTACION_TALLA_VIEW,
+            view_rotacion_tienda=settings.METRICAS_ROTACION_TIENDA_VIEW,
         )
 
         return jsonify({
@@ -270,9 +285,10 @@ def api_metricas():
                 "detallePorTalla": detalle,
             }
         })
-
     except Exception as ex:
-        return jsonify({"ok": False, "error": str(ex)}), 500
+        current_app.logger.exception("Error en /api/metricas")
+        return jsonify({"ok": False, "error": str(ex), "trace": traceback.format_exc()}), 500
+    
 
 @segmentacion_bp.post("/api/segmentaciones")
 @login_required

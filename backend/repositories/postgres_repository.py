@@ -1,8 +1,9 @@
 # backend/repositories/postgres_repository.py
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from contextlib import contextmanager
+from contextlib import contextmanager as ctxmanager
 from typing import Any, Dict, List, Optional, Callable
+from decimal import Decimal
 import re
 
 
@@ -27,7 +28,7 @@ class PostgresRepository:
             raise ValueError("POSTGRES_DSN está vacío. Configura la variable de entorno POSTGRES_DSN.")
         self._dsn = dsn
 
-    @contextmanager
+    @ctxmanager
     def _conn(self):
         conn = psycopg2.connect(self._dsn)
         try:
@@ -35,12 +36,26 @@ class PostgresRepository:
         finally:
             conn.close()
 
+    def _json_safe_value(self, v: Any) -> Any:
+        if v is None:
+            return None
+        if isinstance(v, Decimal):
+            return float(v)
+        if isinstance(v, dict):
+            return {k: self._json_safe_value(val) for k, val in v.items()}
+        if isinstance(v, (list, tuple)):
+            return [self._json_safe_value(x) for x in v]
+        return v
+
+    def _json_safe_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        return {k: self._json_safe_value(v) for k, v in (row or {}).items()}
+
     def fetch_all(self, sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         with self._conn() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(sql, params or {})
                 rows = cur.fetchall()
-                return [dict(r) for r in rows]
+                return [self._json_safe_row(dict(r)) for r in rows]
 
     def fetch_one(self, sql: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         sql_clean = (sql or "").lstrip().lower()
@@ -56,7 +71,7 @@ class PostgresRepository:
                 if not is_select:
                     conn.commit()
 
-                return dict(row) if row else None
+                return self._json_safe_row(dict(row)) if row else None
 
             except Exception:
                 # Si falló algo en un statement que pudo modificar datos, revertir
@@ -108,7 +123,8 @@ class PostgresRepository:
 
     def obtener_metricas_por_referencia(self, referencia_sku: str, llave_naval: str | None,
                                     view_cpd_talla: str, view_cpd_tienda: str,
-                                    view_prom_talla: str, view_prom_tienda: str):
+                                    view_prom_talla: str, view_prom_tienda: str,
+                                    view_rotacion_talla: str, view_rotacion_tienda: str):
         """
         Trae métricas desde vistas (Postgres) para una referencia_sku.
         Devuelve:
@@ -119,6 +135,8 @@ class PostgresRepository:
         v_cpd_tienda = _safe_view_name(view_cpd_tienda)
         v_prom_talla = _safe_view_name(view_prom_talla)
         v_prom_tienda = _safe_view_name(view_prom_tienda)
+        v_rotacion_talla = _safe_view_name(view_rotacion_talla)
+        v_rotacion_tienda = _safe_view_name(view_rotacion_tienda)
 
         ref = (referencia_sku or "").strip()
         if not ref:
@@ -128,24 +146,29 @@ class PostgresRepository:
 
         where_llave = ""
         if params["llave"]:
-            where_llave = " AND llave_naval = %(llave)s "
+            where_llave = " AND t.llave_naval = %(llave)s "
 
         sql_resumen = f"""
             SELECT
                 llave_naval,
                 referencia_sku,
                 cpd_total,
-                venta_promedio_mensual_total
+                venta_promedio_mensual_total,
+                rotacion_tienda
             FROM (
                 SELECT
                     t.llave_naval,
                     t.referencia_sku,
                     t.cpd_total,
-                    p.venta_promedio_mensual_total
+                    p.venta_promedio_mensual_total,
+                    r.rotacion_tienda
                 FROM public.{v_cpd_tienda} t
                 LEFT JOIN public.{v_prom_tienda} p
                     ON p.llave_naval = t.llave_naval
                 AND p.referencia_sku = t.referencia_sku
+                LEFT JOIN public.{v_rotacion_tienda} r
+                    ON r.llave_naval = t.llave_naval
+                AND r.referencia_sku = t.referencia_sku
                 WHERE t.referencia_sku = %(ref)s
                 {where_llave}
             ) x
@@ -159,13 +182,19 @@ class PostgresRepository:
                 t.talla,
                 t.ean,
                 t.cpd,
-                p.venta_promedio_mensual
+                p.venta_promedio_mensual,
+                r.rotacion_talla
             FROM public.{v_cpd_talla} t
             LEFT JOIN public.{v_prom_talla} p
                 ON p.llave_naval = t.llave_naval
             AND p.referencia_sku = t.referencia_sku
             AND p.talla = t.talla
             AND COALESCE(p.ean,'') = COALESCE(t.ean,'')
+            LEFT JOIN public.{v_rotacion_talla} r
+                ON r.llave_naval = t.llave_naval
+            AND r.referencia_sku = t.referencia_sku
+            AND r.talla = t.talla
+            AND COALESCE(r.ean,'') = COALESCE(t.ean,'')
             WHERE t.referencia_sku = %(ref)s
             {where_llave}
             ORDER BY llave_naval, talla;

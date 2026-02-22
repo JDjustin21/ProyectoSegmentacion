@@ -1,0 +1,31 @@
+2026-02-19 17:01:17,714 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_job_20260219.log
+2026-02-19 17:01:17,767 | INFO | Version creada (Inactiva): id_version_inventario=2
+2026-02-19 17:01:18,239 | INFO | Universo referencias: 1566
+2026-02-19 17:01:18,239 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=180 METRICAS_ROTACION_MAX_FILAS_INV=200000
+2026-02-19 17:01:18,240 | INFO | Lote 1/8: refs=200 -> llamando API...
+2026-02-19 17:01:51,208 | INFO | Lote 1/8: API filas=78783 truncado=False
+2026-02-19 17:01:56,698 | INFO | Lote 1/8: insertadas=78783 acumulado=78783 tiempo_s=38.46
+2026-02-19 17:01:56,698 | INFO | Lote 2/8: refs=200 -> llamando API...
+2026-02-19 17:02:28,796 | INFO | Lote 2/8: API filas=78783 truncado=False
+2026-02-19 17:02:35,102 | INFO | Lote 2/8: insertadas=78783 acumulado=157566 tiempo_s=38.40
+2026-02-19 17:02:35,102 | INFO | Lote 3/8: refs=200 -> llamando API...
+2026-02-19 17:03:07,259 | INFO | Lote 3/8: API filas=78783 truncado=False
+2026-02-19 17:03:12,625 | INFO | Lote 3/8: insertadas=78783 acumulado=236349 tiempo_s=37.52
+2026-02-19 17:03:12,625 | INFO | Lote 4/8: refs=200 -> llamando API...
+2026-02-19 17:03:41,533 | INFO | Lote 4/8: API filas=78783 truncado=False
+2026-02-19 17:03:46,843 | INFO | Lote 4/8: insertadas=78783 acumulado=315132 tiempo_s=34.22
+2026-02-19 17:03:46,843 | INFO | Lote 5/8: refs=200 -> llamando API...
+2026-02-19 17:04:18,714 | INFO | Lote 5/8: API filas=78783 truncado=False
+2026-02-19 17:04:25,322 | INFO | Lote 5/8: insertadas=78783 acumulado=393915 tiempo_s=38.48
+2026-02-19 17:04:25,322 | INFO | Lote 6/8: refs=200 -> llamando API...
+2026-02-19 17:04:56,358 | INFO | Lote 6/8: API filas=78783 truncado=False
+2026-02-19 17:05:02,073 | INFO | Lote 6/8: insertadas=78783 acumulado=472698 tiempo_s=36.75
+2026-02-19 17:05:02,074 | INFO | Lote 7/8: refs=200 -> llamando API...
+2026-02-19 17:05:32,501 | INFO | Lote 7/8: API filas=78783 truncado=False
+2026-02-19 17:05:38,911 | INFO | Lote 7/8: insertadas=78783 acumulado=551481 tiempo_s=36.84
+2026-02-19 17:05:38,912 | INFO | Lote 8/8: refs=166 -> llamando API...
+2026-02-19 17:06:10,433 | INFO | Lote 8/8: API filas=78783 truncado=False
+2026-02-19 17:06:16,985 | INFO | Lote 8/8: insertadas=78783 acumulado=630264 tiempo_s=38.07
+2026-02-19 17:06:17,071 | INFO | Version marcada Activa: id_version_inventario=2 filas_total=630264
+2026-02-19 17:06:18,792 | INFO | refresh_inventario_actual ejecutado y confirmado (COMMIT).
+2026-02-19 17:06:18,792 | INFO | OK inventario. version=2 filas=630264

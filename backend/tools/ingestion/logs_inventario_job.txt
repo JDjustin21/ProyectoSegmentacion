@@ -1,0 +1,2 @@
+[jue 19/02/2026 17:06:18,87] OK inventario_job 
+[vie 20/02/2026  7:05:07,50] ERROR inventario_job 

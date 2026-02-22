@@ -25,7 +25,8 @@ METRICAS_CPD_TALLA_VIEW = os.getenv("METRICAS_CPD_TALLA_VIEW", "vw_metricas_cpd_
 METRICAS_CPD_TIENDA_VIEW = os.getenv("METRICAS_CPD_TIENDA_VIEW", "vw_metricas_cpd_30_dias_resumen_tienda")
 METRICAS_VENTA_PROM_TALLA_VIEW = os.getenv("METRICAS_VENTA_PROM_TALLA_VIEW", "vw_metricas_venta_promedio_3_meses_por_talla")
 METRICAS_VENTA_PROM_TIENDA_VIEW = os.getenv("METRICAS_VENTA_PROM_TIENDA_VIEW", "vw_metricas_venta_promedio_3_meses_resumen_tienda")
-
+METRICAS_ROTACION_TALLA_VIEW = os.getenv("METRICAS_ROTACION_TALLA_VIEW", "vw_metricas_rotacion_por_talla")
+METRICAS_ROTACION_TIENDA_VIEW = os.getenv("METRICAS_ROTACION_TIENDA_VIEW", "vw_metricas_rotacion_por_tienda")
 
 DEFAULT_TALLAS_MVP = os.getenv("DEFAULT_TALLAS_MVP", "S,M,L,XL").strip()
 LINEAS_TALLAS_FIJAS = os.getenv(

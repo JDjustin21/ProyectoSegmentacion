@@ -292,8 +292,6 @@
     return n.toFixed(decimals);
   }
 
-
-
     // Actualizamos los valores de las métricas en el DOM
   function calcularYActualizarMetricas() {
 
@@ -366,6 +364,9 @@
       const resumen = state.metricas?.resumenByLlave?.[llave] || null;
       const cpdTienda = resumen ? fmtFixed(resumen.cpd_total, decimals) : "—";
       const ventaPromTienda = resumen ? fmtFixed(resumen.venta_promedio_mensual_total, decimals) : "—";
+      const rotacionTienda = resumen?.rotacion_tienda != null
+            ? (resumen.rotacion_tienda * 100).toFixed(decimals) + '%'
+            : "—";
 
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
 
@@ -378,8 +379,13 @@
         const tallaUp = keyTalla.toUpperCase();
         const rows = state.metricas?.detalleByLlaveTalla?.[llave]?.[tallaUp] || [];
         const row0 = rows[0] || null; // normalmente 1 fila por talla+ean
+
+
         const ean = row0 ? norm(row0.ean) : "";
         const cpdTalla = row0 ? fmtFixed(row0.cpd, decimals) : "—";
+        const rotacionTalla = row0?.rotacion_talla != null
+              ? (row0.rotacion_talla * 100).toFixed(decimals) + '%'
+              : "—";
 
         const disabledAttr = isActive ? "" : "disabled";
         const disabledClass = isActive ? "" : "is-disabled";
@@ -400,6 +406,7 @@
             />
             <div class="detalle-metricas-talla">
               <div class="small">CPD: ${cpdTalla}</div>
+              <div class="small">Rot: ${rotacionTalla}</div>
             </div>
           </div>
         `;
@@ -440,6 +447,7 @@
           <div class="detalle-col">
             <div class="small">Venta Promedio: ${ventaPromTienda}</div>
             <div class="small">CPD tienda: ${cpdTienda}</div>
+            <div class="small">Rot. total: ${rotacionTienda}</div>
           </div>
         </div>
       `;
@@ -497,36 +505,59 @@
   }
 
   async function cargarMetricas(dom) {
-  const q = buildQuery({ referenciaSku: state.ref.referenciaSku });
-  const url = `${API_METRICAS}?${q}`;
-  const json = await fetchJson(url);
-  if (!json.ok) throw new Error(json.error || "Error consultando métricas");
+    const q = buildQuery({ referenciaSku: state.ref.referenciaSku });
+    const url = `${API_METRICAS}?${q}`;
+    const json = await fetchJson(url);
 
-  const data = json.data || {};
-  const resumen = Array.isArray(data.resumenPorTienda) ? data.resumenPorTienda : [];
-  const detalle = Array.isArray(data.detallePorTalla) ? data.detallePorTalla : [];
+    if (!json.ok) throw new Error(json.error || "Error consultando métricas");
 
-  const resumenByLlave = {};
-  resumen.forEach(r => {
-    const llave = norm(r.llave_naval);
-    if (!llave) return;
-    resumenByLlave[llave] = r;
-  });
+    const data = json.data || {};
+    const resumen = Array.isArray(data.resumenPorTienda) ? data.resumenPorTienda : [];
+    const detalle = Array.isArray(data.detallePorTalla) ? data.detallePorTalla : [];
 
-  const detalleByLlaveTalla = {};
-  detalle.forEach(r => {
-    const llave = norm(r.llave_naval);
-    const talla = norm(r.talla).toUpperCase();
-    if (!llave || !talla) return;
+    const resumenByLlave = {};
+    const acc = {}; // llave -> { sumRot, nRot, sampleRow }
 
-    if (!detalleByLlaveTalla[llave]) detalleByLlaveTalla[llave] = {};
-    if (!detalleByLlaveTalla[llave][talla]) detalleByLlaveTalla[llave][talla] = [];
-    detalleByLlaveTalla[llave][talla].push(r);
-  });
+    // 1) recorremos todas las filas del resumen
+    resumen.forEach(r => {
+      const llave = norm(r.llave_naval);
+      if (!llave) return;
 
-  state.metricas = { resumenByLlave, detalleByLlaveTalla };
-  calcularYActualizarMetricas(dom);
-}
+      // guardamos una "fila base" (puede ser la última, como hoy)
+      resumenByLlave[llave] = { ...r };
+
+      // acumulamos SOLO rotación
+      if (!acc[llave]) acc[llave] = { sumRot: 0, nRot: 0 };
+      const rot = toNumberOrNull(r.rotacion_tienda);
+      if (rot !== null) {
+        acc[llave].sumRot += rot;
+        acc[llave].nRot += 1;
+      }
+    });
+
+    // 2) sobrescribimos rotacion_tienda con el promedio
+    Object.entries(acc).forEach(([llave, a]) => {
+      if (!resumenByLlave[llave]) return;
+      resumenByLlave[llave].rotacion_tienda = a.nRot > 0 ? (a.sumRot / a.nRot) : null;
+    });
+
+    const detalleByLlaveTalla = {};
+    detalle.forEach(r => {
+      const llave = norm(r.llave_naval);
+      const talla = norm(r.talla).toUpperCase();
+      if (!llave || !talla) return;
+
+      if (!detalleByLlaveTalla[llave]) detalleByLlaveTalla[llave] = {};
+      if (!detalleByLlaveTalla[llave][talla]) detalleByLlaveTalla[llave][talla] = [];
+      detalleByLlaveTalla[llave][talla].push({
+            ...r,
+            rotacion_talla: r.rotacion_talla !== undefined ? r.rotacion_talla : null
+        });
+    });
+
+    state.metricas = { resumenByLlave, detalleByLlaveTalla };
+    calcularYActualizarMetricas(dom);
+  }
 
 
   // =========================

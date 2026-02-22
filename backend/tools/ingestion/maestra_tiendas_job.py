@@ -130,7 +130,7 @@ def insert_filas(cur, id_version: int):
         INSERT INTO public.maestra_tiendas_filas (
             id_version, llave_naval, cod_bodega, cod_dependencia, dependencia,
             desc_dependencia, ciudad, zona, clima, linea, rankin_linea,
-            estado_linea, estado_tienda, testeo_fnl
+            estado_linea, estado_tienda, testeo_fnl, llave_dep2
         )
         SELECT
             %s AS id_version,
@@ -155,7 +155,8 @@ def insert_filas(cur, id_version: int):
             CASE
                 WHEN lower(testeo_fnl) IN ('testeo') THEN 'Testeo'
                 ELSE 'No Testeo'
-            END AS testeo_fnl
+            END AS testeo_fnl,
+            COALESCE(llave_dep2,'') AS llave_dep2
         FROM public.maestra_tiendas_staging_raw
         WHERE COALESCE(llave_naval,'') <> '';
         """,
