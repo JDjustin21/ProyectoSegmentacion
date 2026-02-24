@@ -30,7 +30,7 @@
   }
 
   function sortTallas(tallas) {
-    const baseOrder = ["XS", "S", "M", "L", "XL", "XXL"];
+    const baseOrder = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "3XL"];
 
     const arr = Array.isArray(tallas) ? tallas.map(norm).filter(Boolean) : [];
 

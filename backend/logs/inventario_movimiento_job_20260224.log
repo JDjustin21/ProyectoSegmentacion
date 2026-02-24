@@ -1,0 +1,177 @@
+2026-02-24 09:43:07,746 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 09:43:07,800 | INFO | Version creada (Inactiva): id_version_movimiento=4
+2026-02-24 09:43:08,128 | INFO | Universo referencias: 1561
+2026-02-24 09:43:08,128 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 09:43:08,128 | INFO | Lote 1/8: refs=200 -> llamando API...
+2026-02-24 09:43:36,834 | INFO | Lote 1/8: API filas=92366 truncado=False
+2026-02-24 10:12:11,863 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 10:12:11,916 | INFO | Version creada (Inactiva): id_version_movimiento=5
+2026-02-24 10:12:12,525 | INFO | Universo referencias: 2167
+2026-02-24 10:12:12,526 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 10:12:12,526 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 10:12:42,327 | INFO | Lote 1/11: API filas=92798 truncado=False
+2026-02-24 10:19:37,304 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 10:19:37,358 | INFO | Version creada (Inactiva): id_version_movimiento=6
+2026-02-24 10:19:37,890 | INFO | Universo referencias: 2167
+2026-02-24 10:19:37,890 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 10:19:37,891 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 10:20:07,954 | INFO | Lote 1/11: API filas=92804 truncado=False
+2026-02-24 10:22:49,423 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 10:22:49,480 | INFO | Version creada (Inactiva): id_version_movimiento=7
+2026-02-24 10:22:49,913 | INFO | Universo referencias: 2167
+2026-02-24 10:22:49,914 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 10:22:49,914 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 10:23:18,597 | INFO | Lote 1/11: API filas=92804 truncado=False
+2026-02-24 10:36:18,832 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 10:36:19,031 | INFO | Version creada (Inactiva): id_version_movimiento=8
+2026-02-24 10:36:19,425 | INFO | Universo referencias: 2167
+2026-02-24 10:36:19,426 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 10:36:19,426 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 10:36:48,424 | INFO | Lote 1/11: API filas=92809 truncado=False
+2026-02-24 10:44:28,215 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 10:44:28,398 | INFO | Version creada (Inactiva): id_version_movimiento=9
+2026-02-24 10:44:28,858 | INFO | Universo referencias: 2167
+2026-02-24 10:44:28,859 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 10:44:28,859 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 10:44:57,279 | INFO | Lote 1/11: API filas=92836 truncado=False
+2026-02-24 10:47:58,055 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 10:47:58,109 | INFO | Version creada (Inactiva): id_version_movimiento=10
+2026-02-24 10:47:58,520 | INFO | Universo referencias: 2167
+2026-02-24 10:47:58,520 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 10:47:58,520 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 10:48:27,521 | INFO | Lote 1/11: API filas=92846 truncado=False
+2026-02-24 11:01:49,268 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 11:01:49,323 | INFO | Version creada (Inactiva): id_version_movimiento=11
+2026-02-24 11:01:49,781 | INFO | Universo referencias: 2167
+2026-02-24 11:01:49,781 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 11:01:49,782 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 11:02:25,777 | INFO | Lote 1/11: API filas=92905 truncado=False
+2026-02-24 11:06:52,402 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 11:06:52,458 | INFO | Version creada (Inactiva): id_version_movimiento=12
+2026-02-24 11:06:53,016 | INFO | Universo referencias: 2167
+2026-02-24 11:06:53,016 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 11:06:53,016 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 11:07:24,860 | INFO | Lote 1/11: API filas=92922 truncado=False
+2026-02-24 11:20:39,619 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 11:20:39,672 | INFO | Version creada (Inactiva): id_version_movimiento=13
+2026-02-24 11:20:40,117 | INFO | Universo referencias: 2167
+2026-02-24 11:20:40,117 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 11:20:40,117 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 11:21:10,793 | INFO | Lote 1/11: API filas=92943 truncado=False
+2026-02-24 11:39:54,176 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 11:39:54,235 | INFO | Version creada (Inactiva): id_version_movimiento=14
+2026-02-24 11:39:54,915 | INFO | Universo referencias: 2167
+2026-02-24 11:39:54,915 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 11:39:54,916 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 11:40:25,961 | INFO | Lote 1/11: API filas=93075 truncado=False
+2026-02-24 11:40:29,117 | INFO | Lote 1/11: insertadas=93075 acumulado=93075 tiempo_s=34.20
+2026-02-24 11:40:29,117 | INFO | Lote 2/11: refs=200 -> llamando API...
+2026-02-24 11:40:58,371 | INFO | Lote 2/11: API filas=93075 truncado=False
+2026-02-24 11:41:01,508 | INFO | Lote 2/11: insertadas=93075 acumulado=186150 tiempo_s=32.39
+2026-02-24 11:41:01,508 | INFO | Lote 3/11: refs=200 -> llamando API...
+2026-02-24 11:41:31,169 | INFO | Lote 3/11: API filas=93075 truncado=False
+2026-02-24 11:41:34,268 | INFO | Lote 3/11: insertadas=93075 acumulado=279225 tiempo_s=32.76
+2026-02-24 11:41:34,269 | INFO | Lote 4/11: refs=200 -> llamando API...
+2026-02-24 11:42:04,650 | INFO | Lote 4/11: API filas=93075 truncado=False
+2026-02-24 11:42:07,585 | INFO | Lote 4/11: insertadas=93075 acumulado=372300 tiempo_s=33.32
+2026-02-24 11:42:07,585 | INFO | Lote 5/11: refs=200 -> llamando API...
+2026-02-24 11:42:39,881 | INFO | Lote 5/11: API filas=93075 truncado=False
+2026-02-24 11:42:42,946 | INFO | Lote 5/11: insertadas=93075 acumulado=465375 tiempo_s=35.36
+2026-02-24 11:42:42,947 | INFO | Lote 6/11: refs=200 -> llamando API...
+2026-02-24 11:43:14,119 | INFO | Lote 6/11: API filas=93075 truncado=False
+2026-02-24 11:43:17,473 | INFO | Lote 6/11: insertadas=93075 acumulado=558450 tiempo_s=34.53
+2026-02-24 11:43:17,474 | INFO | Lote 7/11: refs=200 -> llamando API...
+2026-02-24 11:43:47,701 | INFO | Lote 7/11: API filas=93075 truncado=False
+2026-02-24 11:43:50,669 | INFO | Lote 7/11: insertadas=93075 acumulado=651525 tiempo_s=33.20
+2026-02-24 11:43:50,670 | INFO | Lote 8/11: refs=200 -> llamando API...
+2026-02-24 11:44:21,823 | INFO | Lote 8/11: API filas=93075 truncado=False
+2026-02-24 11:44:25,209 | INFO | Lote 8/11: insertadas=93075 acumulado=744600 tiempo_s=34.54
+2026-02-24 11:44:25,210 | INFO | Lote 9/11: refs=200 -> llamando API...
+2026-02-24 11:45:01,432 | INFO | Lote 9/11: API filas=93213 truncado=False
+2026-02-24 11:45:05,817 | INFO | Lote 9/11: insertadas=93213 acumulado=837813 tiempo_s=40.61
+2026-02-24 11:45:05,817 | INFO | Lote 10/11: refs=200 -> llamando API...
+2026-02-24 11:45:36,154 | INFO | Lote 10/11: API filas=93213 truncado=False
+2026-02-24 11:45:39,341 | INFO | Lote 10/11: insertadas=93213 acumulado=931026 tiempo_s=33.52
+2026-02-24 11:45:39,342 | INFO | Lote 11/11: refs=167 -> llamando API...
+2026-02-24 11:46:07,849 | INFO | Lote 11/11: API filas=93213 truncado=False
+2026-02-24 11:46:10,769 | INFO | Lote 11/11: insertadas=93213 acumulado=1024239 tiempo_s=31.43
+2026-02-24 11:46:10,868 | INFO | Version marcada Activa: id_version_movimiento=14 filas_total=1024239
+2026-02-24 11:46:10,868 | INFO | OK movimientos de inventario. version=14 filas=1024239
+2026-02-24 13:11:02,310 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 13:11:02,364 | INFO | Version creada (Inactiva): id_version_movimiento=15
+2026-02-24 13:11:03,069 | INFO | Universo referencias: 2167
+2026-02-24 13:11:03,070 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 13:11:03,070 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 13:11:39,010 | INFO | Lote 1/11: API filas=94246 truncado=False
+2026-02-24 13:11:43,163 | INFO | Lote 1/11: insertadas=94246 acumulado=94246 tiempo_s=40.09
+2026-02-24 13:11:43,164 | INFO | Lote 2/11: refs=200 -> llamando API...
+2026-02-24 13:12:16,941 | INFO | Lote 2/11: API filas=94246 truncado=False
+2026-02-24 13:12:21,629 | INFO | Lote 2/11: insertadas=94246 acumulado=188492 tiempo_s=38.47
+2026-02-24 13:12:21,630 | INFO | Lote 3/11: refs=200 -> llamando API...
+2026-02-24 13:12:55,077 | INFO | Lote 3/11: API filas=94246 truncado=False
+2026-02-24 13:12:59,344 | INFO | Lote 3/11: insertadas=94246 acumulado=282738 tiempo_s=37.71
+2026-02-24 13:12:59,345 | INFO | Lote 4/11: refs=200 -> llamando API...
+2026-02-24 13:13:32,489 | INFO | Lote 4/11: API filas=94246 truncado=False
+2026-02-24 13:13:36,589 | INFO | Lote 4/11: insertadas=94246 acumulado=376984 tiempo_s=37.24
+2026-02-24 13:13:36,590 | INFO | Lote 5/11: refs=200 -> llamando API...
+2026-02-24 13:14:09,473 | INFO | Lote 5/11: API filas=94246 truncado=False
+2026-02-24 13:14:13,507 | INFO | Lote 5/11: insertadas=94246 acumulado=471230 tiempo_s=36.92
+2026-02-24 13:14:13,507 | INFO | Lote 6/11: refs=200 -> llamando API...
+2026-02-24 13:14:48,785 | INFO | Lote 6/11: API filas=94246 truncado=False
+2026-02-24 13:14:52,649 | INFO | Lote 6/11: insertadas=94246 acumulado=565476 tiempo_s=39.14
+2026-02-24 13:14:52,649 | INFO | Lote 7/11: refs=200 -> llamando API...
+2026-02-24 13:15:29,116 | INFO | Lote 7/11: API filas=94246 truncado=False
+2026-02-24 13:15:33,403 | INFO | Lote 7/11: insertadas=94246 acumulado=659722 tiempo_s=40.75
+2026-02-24 13:15:33,404 | INFO | Lote 8/11: refs=200 -> llamando API...
+2026-02-24 13:16:08,279 | INFO | Lote 8/11: API filas=94246 truncado=False
+2026-02-24 13:16:12,190 | INFO | Lote 8/11: insertadas=94246 acumulado=753968 tiempo_s=38.79
+2026-02-24 13:16:12,190 | INFO | Lote 9/11: refs=200 -> llamando API...
+2026-02-24 13:16:47,959 | INFO | Lote 9/11: API filas=94246 truncado=False
+2026-02-24 13:16:51,942 | INFO | Lote 9/11: insertadas=94246 acumulado=848214 tiempo_s=39.75
+2026-02-24 13:16:51,943 | INFO | Lote 10/11: refs=200 -> llamando API...
+2026-02-24 13:17:26,052 | INFO | Lote 10/11: API filas=94246 truncado=False
+2026-02-24 13:17:30,545 | INFO | Lote 10/11: insertadas=94246 acumulado=942460 tiempo_s=38.60
+2026-02-24 13:17:30,546 | INFO | Lote 11/11: refs=167 -> llamando API...
+2026-02-24 13:18:05,497 | INFO | Lote 11/11: API filas=94246 truncado=False
+2026-02-24 13:18:09,837 | INFO | Lote 11/11: insertadas=94246 acumulado=1036706 tiempo_s=39.29
+2026-02-24 13:18:09,933 | INFO | Version marcada Activa: id_version_movimiento=15 filas_total=1036706
+2026-02-24 13:18:09,933 | INFO | OK movimientos de inventario. version=15 filas=1036706
+2026-02-24 13:24:33,676 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260224.log
+2026-02-24 13:24:33,737 | INFO | Version creada (Inactiva): id_version_movimiento=16
+2026-02-24 13:24:34,452 | INFO | Universo referencias: 2167
+2026-02-24 13:24:34,453 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-02-24 13:24:34,453 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-02-24 13:25:08,587 | INFO | Lote 1/11: API filas=94250 truncado=False
+2026-02-24 13:25:12,008 | INFO | Lote 1/11: insertadas=94250 acumulado=94250 tiempo_s=37.56
+2026-02-24 13:25:12,009 | INFO | Lote 2/11: refs=200 -> llamando API...
+2026-02-24 13:25:48,192 | INFO | Lote 2/11: API filas=94252 truncado=False
+2026-02-24 13:25:51,696 | INFO | Lote 2/11: insertadas=94252 acumulado=188502 tiempo_s=39.69
+2026-02-24 13:25:51,696 | INFO | Lote 3/11: refs=200 -> llamando API...
+2026-02-24 13:26:24,762 | INFO | Lote 3/11: API filas=94256 truncado=False
+2026-02-24 13:26:29,604 | INFO | Lote 3/11: insertadas=94256 acumulado=282758 tiempo_s=37.91
+2026-02-24 13:26:29,616 | INFO | Lote 4/11: refs=200 -> llamando API...
+2026-02-24 13:27:06,621 | INFO | Lote 4/11: API filas=94259 truncado=False
+2026-02-24 13:27:11,574 | INFO | Lote 4/11: insertadas=94259 acumulado=377017 tiempo_s=41.96
+2026-02-24 13:27:11,574 | INFO | Lote 5/11: refs=200 -> llamando API...
+2026-02-24 13:27:45,702 | INFO | Lote 5/11: API filas=94261 truncado=False
+2026-02-24 13:27:49,928 | INFO | Lote 5/11: insertadas=94261 acumulado=471278 tiempo_s=38.35
+2026-02-24 13:27:49,928 | INFO | Lote 6/11: refs=200 -> llamando API...
+2026-02-24 13:28:25,575 | INFO | Lote 6/11: API filas=94261 truncado=False
+2026-02-24 13:28:29,784 | INFO | Lote 6/11: insertadas=94261 acumulado=565539 tiempo_s=39.86
+2026-02-24 13:28:29,784 | INFO | Lote 7/11: refs=200 -> llamando API...
+2026-02-24 13:29:01,720 | INFO | Lote 7/11: API filas=94261 truncado=False
+2026-02-24 13:29:06,509 | INFO | Lote 7/11: insertadas=94261 acumulado=659800 tiempo_s=36.72
+2026-02-24 13:29:06,509 | INFO | Lote 8/11: refs=200 -> llamando API...
+2026-02-24 13:29:42,713 | INFO | Lote 8/11: API filas=94261 truncado=False
+2026-02-24 13:29:47,266 | INFO | Lote 8/11: insertadas=94261 acumulado=754061 tiempo_s=40.76
+2026-02-24 13:29:47,266 | INFO | Lote 9/11: refs=200 -> llamando API...
+2026-02-24 13:30:20,189 | INFO | Lote 9/11: API filas=94261 truncado=False
+2026-02-24 13:30:24,721 | INFO | Lote 9/11: insertadas=94261 acumulado=848322 tiempo_s=37.45
+2026-02-24 13:30:24,721 | INFO | Lote 10/11: refs=200 -> llamando API...
+2026-02-24 13:30:59,651 | INFO | Lote 10/11: API filas=94261 truncado=False
+2026-02-24 13:31:04,142 | INFO | Lote 10/11: insertadas=94261 acumulado=942583 tiempo_s=39.42
+2026-02-24 13:31:04,142 | INFO | Lote 11/11: refs=167 -> llamando API...
+2026-02-24 13:31:37,090 | INFO | Lote 11/11: API filas=94261 truncado=False
+2026-02-24 13:31:40,194 | INFO | Lote 11/11: insertadas=94261 acumulado=1036844 tiempo_s=36.05
+2026-02-24 13:31:40,452 | INFO | Version marcada Activa: id_version_movimiento=16 filas_total=1036844
+2026-02-24 13:31:40,452 | INFO | OK movimientos de inventario. version=16 filas=1036844

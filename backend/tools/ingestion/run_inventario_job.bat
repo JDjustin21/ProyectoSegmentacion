@@ -22,4 +22,8 @@ if %ERRORLEVEL% NEQ 0 (
   echo [%DATE% %TIME%] OK inventario_job >> backend\tools\ingestion\logs_inventario_job.txt
 )
 
+if %ERRORLEVEL% NEQ 0 (
+   echo [%DATE% %TIME%] ERROR inventario_job >> C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\logs_inventario_job.txt
+   exit /b %ERRORLEVEL%
+)
 endlocal

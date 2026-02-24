@@ -1,2 +1,7 @@
 [jue 19/02/2026 17:06:18,87] OK inventario_job 
 [vie 20/02/2026  7:05:07,50] ERROR inventario_job 
+[mar 24/02/2026  8:38:19,06] ERROR inventario_job 
+[mar 24/02/2026  8:40:26,83] ERROR inventario_job 
+[mar 24/02/2026  8:48:09,65] ERROR inventario_job 
+[mar 24/02/2026  9:08:38,32] ERROR inventario_job 
+[mar 24/02/2026  9:29:49,90] OK inventario_job 

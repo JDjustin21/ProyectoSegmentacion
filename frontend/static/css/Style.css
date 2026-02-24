@@ -480,7 +480,7 @@ html, body{
 /* Layout 5 columnas dentro del modal */
 .detalle-row-5{
   display: grid;
-  grid-template-columns: 2.2fr 0.8fr 0.8fr 3fr 1.4fr;
+  grid-template-columns: 2.2fr 0.8fr 0.8fr 4.2fr 1.0fr !important;
   gap: 12px;
   padding: 12px;
   border-radius: 10px;
@@ -493,10 +493,20 @@ html, body{
 }
 
 .detalle-col.tallas .detalle-tallas{
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding-bottom: 4px;
+}
+
+/* 3) Las tarjetas de talla: que no se estiren raro */
+.detalle-talla-col{
+  flex: 0 0 auto;
+}
+/* 4) Hacer la columna de rotación más compacta */
+.detalle-row-5 .detalle-col:nth-child(5) .small{
+  font-size: 11px !important;
+  line-height: 1.15 !important;
 }
 
 /* Marca visual cuando está desactivado */
