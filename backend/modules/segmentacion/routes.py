@@ -161,6 +161,7 @@ def api_refresh_cache_referencias():
 @login_required
 def api_ack_referencia():
     payload = request.get_json(silent=True) or {}
+    
     referencia = (payload.get("referencia") or "").strip()
     if not referencia:
         return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
@@ -527,6 +528,65 @@ def api_export_csv():
 
     rows = svc.export_dataset_todas()
 
+    def _norm_digits(v: str) -> str:
+        return re.sub(r"\D+", "", (v or "").strip())
+
+    # 1) Keys únicas para consultar la vista semanal
+    keys = []
+    seen = set()
+
+    for r in rows:
+        ref = (r.get("referencia") or "").strip()
+        llave = (r.get("llave_naval") or "").strip()
+        ean = _norm_digits(r.get("codigo_barras"))
+
+        if not ref or not llave or not ean:
+            continue
+
+        k = (ref, llave, ean)
+        if k not in seen:
+            seen.add(k)
+            keys.append(k)
+
+    # 2) Traemos semanas desde la vista (solo para esas keys)
+    ventas_map = {}  # (ref, llave, ean) -> semanas
+
+    if keys:
+        values_sql = ",".join([f"(%(r{i})s, %(l{i})s, %(e{i})s)" for i in range(len(keys))])
+        params = {}
+        for i, (rr, ll, ee) in enumerate(keys):
+            params[f"r{i}"] = rr
+            params[f"l{i}"] = ll
+            params[f"e{i}"] = ee
+
+        sql = f"""
+        WITH input(referencia_sku, llave_naval, ean) AS (
+            VALUES {values_sql}
+        )
+        SELECT
+            v.referencia_sku,
+            v.llave_naval,
+            v.ean,
+            v.semana1, v.semana2, v.semana3, v.semana4,
+            v.semana5, v.semana6, v.semana7, v.semana8
+        FROM public.vw_ventas_semanales_8w_por_ean v
+        JOIN input i
+          ON i.referencia_sku = v.referencia_sku
+         AND i.llave_naval = v.llave_naval
+         AND i.ean = v.ean
+        """
+
+        result = repo.fetch_all(sql, params)
+        for row in result:
+            k = (
+                (row.get("referencia_sku") or "").strip(),
+                (row.get("llave_naval") or "").strip(),
+                _norm_digits(row.get("ean"))
+            )
+            ventas_map[k] = row
+
+    current_app.logger.info("Export rows: %s | Weekly map: %s", len(rows), len(ventas_map))
+
     headers = [
         
         "id_segmentacion",
@@ -536,6 +596,7 @@ def api_export_csv():
 
         "referenciaSku",
         "codigo_barras",
+        "codigo_barras_sku",
         "descripcion",
         "categoria",
         "linea",
@@ -561,6 +622,14 @@ def api_export_csv():
         "testeo",
         "fecha_creacion",
         "fecha_actualizacion"
+        "semana1",
+        "semana2",
+        "semana3",
+        "semana4",
+        "semana5",
+        "semana6",
+        "semana7",
+        "semana8",
     ]
 
     sio = io.StringIO()
@@ -568,6 +637,13 @@ def api_export_csv():
     writer.writeheader()
 
     for r in rows:
+
+        ref = (r.get("referencia") or "").strip()
+        llave = (r.get("llave_naval") or "").strip()
+        ean = _norm_digits(r.get("codigo_barras"))
+
+        wk = ventas_map.get((ref, llave, ean), {}) or {}
+
         writer.writerow({
            
             "id_segmentacion": r.get("id_segmentacion"),
@@ -577,6 +653,7 @@ def api_export_csv():
 
             "referenciaSku": r.get("referencia"),
             "codigo_barras": r.get("codigo_barras"),
+            "codigo_barras_sku": r.get("codigo_barras_sku"),
             "descripcion": r.get("descripcion"),
             "categoria": r.get("categoria"),
             "linea": r.get("linea"),
@@ -602,6 +679,14 @@ def api_export_csv():
             "testeo": r.get("testeo"),
             "fecha_actualizacion": r.get("fecha_actualizacion"),
             "fecha_creacion": r.get("fecha_creacion"),
+            "semana1": wk.get("semana1", 0),
+            "semana2": wk.get("semana2", 0),
+            "semana3": wk.get("semana3", 0),
+            "semana4": wk.get("semana4", 0),
+            "semana5": wk.get("semana5", 0),
+            "semana6": wk.get("semana6", 0),
+            "semana7": wk.get("semana7", 0),
+            "semana8": wk.get("semana8", 0),
         })
 
     # Tip: utf-8-sig ayuda a Excel a abrir acentos bien (BOM)

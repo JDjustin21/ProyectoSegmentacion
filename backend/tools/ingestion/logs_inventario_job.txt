@@ -5,3 +5,6 @@
 [mar 24/02/2026  8:48:09,65] ERROR inventario_job 
 [mar 24/02/2026  9:08:38,32] ERROR inventario_job 
 [mar 24/02/2026  9:29:49,90] OK inventario_job 
+[jue 26/02/2026  7:05:09,56] ERROR inventario_job 
+[vie 27/02/2026  7:05:37,38] ERROR inventario_job 
+[mar 03/03/2026  7:08:03,31] ERROR inventario_job 

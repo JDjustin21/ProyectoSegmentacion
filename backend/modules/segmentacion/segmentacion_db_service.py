@@ -212,6 +212,8 @@ class SegmentacionDbService:
             raise RuntimeError("El campo 'detalle' debe ser una lista.")
 
         # 1) Lista activa desde payload: solo cantidad > 0
+        
+
         filas_activo: List[Dict[str, Any]] = []
         total_units = 0
         tiendas_con_cantidad = set()
@@ -228,8 +230,9 @@ class SegmentacionDbService:
             total_units += cantidad
             tiendas_con_cantidad.add(llave)
             tallas_usadas.add(talla)
+            codigo_barras = (d.get("codigo_barras") or "").strip()
 
-            filas_activo.append({"llave_naval": llave, "talla": talla, "cantidad": cantidad})
+            filas_activo.append({"llave_naval": llave, "talla": talla, "cantidad": cantidad, "codigo_barras": codigo_barras or None})
 
         new_keys = {(r["llave_naval"], r["talla"]) for r in filas_activo}
         nueva_activa = bool(new_keys)
@@ -332,6 +335,7 @@ class SegmentacionDbService:
                     "llave_naval": r["llave_naval"],
                     "talla": r["talla"],
                     "cantidad": int(r["cantidad"]),
+                    "codigo_barras": r.get("codigo_barras"),
                     "estado_detalle": "Activo",
                     "fecha_actualizacion": now,
                 })
@@ -342,6 +346,7 @@ class SegmentacionDbService:
                     "llave_naval": llave,
                     "talla": talla,
                     "cantidad": 0,
+                    "codigo_barras": None,
                     "estado_detalle": "Inactivo",
                     "fecha_actualizacion": now,
                 })
@@ -349,10 +354,10 @@ class SegmentacionDbService:
             if filas_insert:
                 cur.executemany("""
                     INSERT INTO segmentacion_detalle (
-                        id_segmentacion, llave_naval, talla, cantidad, estado_detalle, fecha_actualizacion
+                        id_segmentacion, llave_naval, talla, cantidad, codigo_barras, estado_detalle, fecha_actualizacion
                     )
                     VALUES (
-                        %(id_segmentacion)s, %(llave_naval)s, %(talla)s, %(cantidad)s, %(estado_detalle)s, %(fecha_actualizacion)s
+                        %(id_segmentacion)s, %(llave_naval)s, %(talla)s, %(cantidad)s, %(codigo_barras)s, %(estado_detalle)s, %(fecha_actualizacion)s
                     );
                 """, filas_insert)
 
@@ -404,7 +409,7 @@ class SegmentacionDbService:
                 s.id_usuario,
                 s.id_version_tiendas,
                 s.referencia,
-                s.codigo_barras,
+                s.codigo_barras AS codigo_barras_sku,
                 s.descripcion,
                 s.categoria,
                 s.linea,
@@ -418,6 +423,7 @@ class SegmentacionDbService:
 
                 d.llave_naval,
                 d.talla,
+                d.codigo_barras AS codigo_barras,
                 d.cantidad,
                 d.estado_detalle,
                 d.fecha_actualizacion,

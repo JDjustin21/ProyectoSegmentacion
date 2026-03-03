@@ -235,6 +235,7 @@
       precioUnitario: 0,
       tallasFinal: [],
       tallasConteo: null,
+      codigosBarrasPorTalla: null,
     },
 
     tiendas: [],
@@ -279,6 +280,26 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  function ventaPromedioTienda(resumen) {
+    return toNumberOrZero(resumen?.venta_promedio_mensual_total);
+  }
+
+  function totalVentaPromedioTiendasFiltradas() {
+    const tiendas = Array.isArray(state.tiendas) ? state.tiendas : [];
+    const resumenByLlave = state.metricas?.resumenByLlave || {};
+
+    let total = 0;
+    tiendas.forEach(t => {
+      const llave = norm(t.llave_naval);
+      if (!llave) return;
+      const resumen = resumenByLlave[llave];
+      if (!resumen) return;
+      total += ventaPromedioTienda(resumen);
+    });
+
+    return total;
+  }
+
   function getMetricsDecimals(dom) {
     const raw = dom?.modalEl?.dataset?.metricsDecimals;
     const n = parseInt(raw, 10);
@@ -300,6 +321,8 @@
     // Inicializamos los totales
     let totalCPD = 0;
     let totalVenta = 0;
+    let sumRot = 0;
+    let nRot = 0; // para contar cuántas tiendas tienen rotación válida y así sacar promedio
 
     // Sumamos las métricas de las tiendas filtradas
     const tiendasFiltradas = Array.isArray(state.tiendas) ? state.tiendas : [];
@@ -311,14 +334,27 @@
 
       totalCPD += toNumberOrZero(resumen.cpd_total);
       totalVenta += toNumberOrZero(resumen.venta_promedio_mensual_total);
+
+      const rot = toNumberOrNull(resumen.rotacion_tienda);
+      if (rot !== null) {
+        sumRot += rot;
+        nRot += 1;
+      }
     });
 
     // Actualizamos las métricas en el DOM
+    const rotacionTotal = (nRot > 0) ? (sumRot / nRot) : null;
+    
     const cpdTotalEl = document.getElementById("cpd-total");
     const ventaTotalEl = document.getElementById("venta-total");
+    const rotTotalEl = document.getElementById("rotacion-total");
 
     if (cpdTotalEl) cpdTotalEl.textContent = fmtFixed(totalCPD, 1);
     if (ventaTotalEl) ventaTotalEl.textContent = fmtFixed(totalVenta, 1);
+    if (rotTotalEl) {
+      rotTotalEl.textContent =
+        rotacionTotal !== null ? (rotacionTotal * 100).toFixed(1) + "%" : "—";
+    }
   }
 
   // =========================
@@ -337,6 +373,9 @@
       `;
       return;
     }
+
+    const totalVentaProm = totalVentaPromedioTiendasFiltradas();
+    const decimals = getMetricsDecimals(dom);
 
     const headerHtml = `
       <div class="detalle-row-5 detalle-row-head">
@@ -367,6 +406,12 @@
       const rotacionTienda = resumen?.rotacion_tienda != null
             ? (resumen.rotacion_tienda * 100).toFixed(decimals) + '%'
             : "—";
+      const ventaPromNum = ventaPromedioTienda(resumen);
+      const partVentaProm = (totalVentaProm > 0) ? (ventaPromNum / totalVentaProm) : null;
+
+      const partVentaPromTxt = (partVentaProm !== null)
+        ? (partVentaProm * 100).toFixed(decimals) + "%"
+        : "—";
 
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
 
@@ -446,6 +491,7 @@
           <!-- 5) Métricas tienda -->
           <div class="detalle-col">
             <div class="small">Venta Promedio: ${ventaPromTienda}</div>
+            <div class="small">Part. venta: ${partVentaPromTxt}</div>
             <div class="small">CPD tienda: ${cpdTienda}</div>
             <div class="small">Rot. total: ${rotacionTienda}</div>
           </div>
@@ -667,6 +713,7 @@
       estado_sku: state.ref.estado,
       cuento: state.ref.cuento,
       codigo_barras: state.ref.codigoBarras,
+      codigosBarrasPorTalla: state.ref.codigosBarrasPorTalla,
       tipo_inventario: state.ref.tipoInventario,
     };
 
@@ -675,8 +722,11 @@
       if (!isStoreActive(llave_naval)) return;
 
       Object.entries(byTalla || {}).forEach(([talla, cantidad]) => {
+        const tallaKey = norm(talla).toUpperCase();
+        const ean = norm(state.ref.codigosBarrasPorTalla?.[tallaKey] || "");
+
         const qty = Number(cantidad || 0);
-        if (qty > 0) detalle.push({ llave_naval, talla, cantidad: qty });
+        if (qty > 0) detalle.push({ llave_naval, talla: tallaKey, cantidad: qty, codigo_barras: ean });
       });
     });
 
@@ -690,6 +740,11 @@
     if (!payload.referenciaSku) throw new Error("Falta referenciaSku para guardar.");
     if (!payload.linea) throw new Error("Falta línea para guardar.");
     if (!Array.isArray(payload.detalle)) payload.detalle = [];
+
+    console.log("[GUARDAR] ref:", payload.referenciaSku, "linea:", payload.linea);
+    console.log("[GUARDAR] codigosBarrasPorTalla keys:", Object.keys(payload.codigosBarrasPorTalla || {}).slice(0, 10));
+    console.log("[GUARDAR] detalle len:", payload.detalle?.length || 0);
+    console.log("[GUARDAR] detalle sample:", payload.detalle?.[0]);
 
     const res = await fetch(API_GUARDAR, {
       method: "POST",
@@ -721,8 +776,12 @@
     state.ref.categoria = norm(payload.categoria);
     state.ref.estado = norm(payload.estado);
     state.ref.tipoPortafolio = norm(payload.tipoPortafolio);
+
     state.ref.lineaRaw = norm(payload.lineaRaw);
-    state.ref.lineaTexto = norm(payload.lineaTexto);
+    state.ref.lineaTexto = norm(payload.lineaTexto || payload.lineaTextoUi || "");
+
+    state.ref.codigosBarrasPorTalla = payload.codigosBarrasPorTalla || payload.codigos_barras_por_talla || null;
+
     state.ref.color = norm(payload.color);
     state.ref.cuento = norm(payload.cuento);
     state.ref.codigoBarras = norm(payload.codigoBarras);
@@ -731,6 +790,10 @@
       payload.precioUnitario ?? payload.precio_unitario ?? payload.PrecioUnitario
     );
 
+    
+    const tallasFromPayload = Array.isArray(payload.tallasFinal)
+      ? payload.tallasFinal
+      : (Array.isArray(payload.tallas) ? payload.tallas : norm(payload.tallas).split(","));
     state.ref.tallasFinal = sortTallas(payload.tallasFinal);
     state.ref.tallasConteo = payload.tallasConteo || null;
 
@@ -967,6 +1030,8 @@
         const resp = await guardarSegmentacion(dom);
 
         dom.footerInfoEl.textContent = `Guardado exitoso • ${new Date().toLocaleString()}`;
+
+        console.log("[DETALLE] detalle sample:", payload.detalle?.[0]);
 
         // Dispara evento SOLO después de guardar OK
         window.dispatchEvent(new CustomEvent("segmentacion:guardada", {
