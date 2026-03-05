@@ -175,31 +175,126 @@ class PostgresRepository:
             ORDER BY llave_naval;
         """
 
+        where_llave_det = ""
+        if params["llave"]:
+            where_llave_det = " AND COALESCE(t.llave_naval, r.llave_naval) = %(llave)s "
+
         sql_detalle = f"""
             SELECT
-                t.llave_naval,
-                t.referencia_sku,
-                t.talla,
-                t.ean,
-                t.cpd,
-                p.venta_promedio_mensual,
-                r.rotacion_talla
+                COALESCE(t.llave_naval, r.llave_naval)        AS llave_naval,
+                COALESCE(t.referencia_sku, r.referencia_sku)  AS referencia_sku,
+                COALESCE(t.talla, r.talla)                    AS talla,
+                COALESCE(t.ean, r.ean)                        AS ean,
+                t.cpd                                         AS cpd,
+                p.venta_promedio_mensual                      AS venta_promedio_mensual,
+                r.rotacion_talla                              AS rotacion_talla
             FROM public.{v_cpd_talla} t
-            LEFT JOIN public.{v_prom_talla} p
-                ON p.llave_naval = t.llave_naval
-            AND p.referencia_sku = t.referencia_sku
-            AND p.talla = t.talla
-            AND COALESCE(p.ean,'') = COALESCE(t.ean,'')
-            LEFT JOIN public.{v_rotacion_talla} r
+            FULL OUTER JOIN public.{v_rotacion_talla} r
                 ON r.llave_naval = t.llave_naval
-            AND r.referencia_sku = t.referencia_sku
-            AND r.talla = t.talla
-            AND COALESCE(r.ean,'') = COALESCE(t.ean,'')
-            WHERE t.referencia_sku = %(ref)s
-            {where_llave}
-            ORDER BY llave_naval, talla;
+                AND r.referencia_sku = t.referencia_sku
+                AND r.talla = t.talla
+                AND COALESCE(r.ean,'') = COALESCE(t.ean,'')
+            LEFT JOIN public.{v_prom_talla} p
+                ON p.llave_naval = COALESCE(t.llave_naval, r.llave_naval)
+                AND p.referencia_sku = COALESCE(t.referencia_sku, r.referencia_sku)
+                AND p.talla = COALESCE(t.talla, r.talla)
+                AND COALESCE(p.ean,'') = COALESCE(COALESCE(t.ean, r.ean),'')
+            WHERE COALESCE(t.referencia_sku, r.referencia_sku) = %(ref)s
+            {where_llave_det}
+            ORDER BY COALESCE(t.llave_naval, r.llave_naval), COALESCE(t.talla, r.talla);
         """
 
         resumen = self.fetch_all(sql_resumen, params)
         detalle = self.fetch_all(sql_detalle, params)
         return resumen, detalle
+    
+    def obtener_existencia_por_talla(
+        self,
+        referencia_sku: str,
+        llave_naval: str | None,
+        view_existencia_talla: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Trae existencia actual por talla desde una vista Postgres.
+        NO depende de ventas. Sirve incluso si la referencia nunca vendió.
+
+        Retorna filas:
+        llave_naval, referencia_sku, talla, ean, existencia_talla, disponible_talla, fecha_ultima_actualizacion
+        """
+        v_ex = _safe_view_name(view_existencia_talla)
+
+        ref = (referencia_sku or "").strip()
+        if not ref:
+            return []
+
+        params = {"ref": ref, "llave": (llave_naval or "").strip()}
+        where_llave = ""
+        if params["llave"]:
+            where_llave = " AND e.llave_naval = %(llave)s "
+
+        sql = f"""
+            SELECT
+                e.llave_naval,
+                e.referencia_sku,
+                e.talla,
+                e.ean,
+                e.existencia_talla,
+                e.disponible_talla,
+                e.fecha_ultima_actualizacion
+            FROM public.{v_ex} e
+            WHERE e.referencia_sku = %(ref)s
+            {where_llave}
+            ORDER BY e.llave_naval, e.talla;
+        """
+        return self.fetch_all(sql, params)
+    
+    def obtener_participacion_linea_por_tiendas(
+        self,
+        linea: str,
+        dependencia: str | None,
+        view_part_linea: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Trae participación por línea (3 meses) por tienda, desde una vista Postgres.
+
+        - linea: puede venir como "13 - Hombre Deportivo" o "Hombre Deportivo"
+        - dependencia: opcional (si se filtra, mejor performance)
+        - view_part_linea: nombre de vista (configurable, validado)
+
+        Retorna filas de la vista:
+        dependencia, linea, llave_naval, cod_bodega, desc_dependencia,
+        venta_promedio_mensual_linea_tienda, venta_promedio_mensual_linea_cliente, participacion_venta_linea
+        """
+        v_part = _safe_view_name(view_part_linea)
+
+        linea_in = (linea or "").strip()
+        if not linea_in:
+            return []
+
+        dep_in = (dependencia or "").strip() if dependencia else ""
+
+        params = {"linea": linea_in, "dep": dep_in}
+
+        where_dep = ""
+        if dep_in:
+            where_dep = " AND dependencia = %(dep)s "
+
+        # Normaliza en WHERE para que "13 - X" matchee con "X"
+        sql = f"""
+            SELECT
+                dependencia,
+                linea,
+                llave_naval,
+                cod_bodega,
+                desc_dependencia,
+                venta_promedio_mensual_linea_tienda,
+                venta_promedio_mensual_linea_cliente,
+                participacion_venta_linea
+            FROM public.{v_part}
+            WHERE
+                lower(trim(regexp_replace(linea, '^[0-9]+\\s*-\\s*', ''))) =
+                lower(trim(regexp_replace(%(linea)s, '^[0-9]+\\s*-\\s*', '')))
+                {where_dep}
+            ORDER BY dependencia, linea, desc_dependencia;
+        """
+        return self.fetch_all(sql, params)

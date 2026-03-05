@@ -595,6 +595,40 @@ html, body{
   border-color: #27ae60 !important;
 }
 
+.seg-pill{
+  padding: .45rem .75rem;
+  border: 1px solid #e6e8ef;
+  background: #f7f8fb;
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(0,0,0,.02);
+}
+
+/* Ajustes finos del switch para que se vea más premium */
+.seg-pill .form-check-label{
+  font-size: .95rem;
+  color: #2a2f3a;
+  user-select: none;
+}
+
+.seg-pill .form-check-input{
+  cursor: pointer;
+}
+
+/* Botón limpiar un poco más “UI” */
+.btn-limpiar{
+  border: 1px solid #e6e8ef;
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(0,0,0,.03);
+}
+
+.btn-limpiar:hover{
+  background: #f7f8fb;
+}
+
+.btn-limpiar:active{
+  transform: translateY(1px);
+}
+
 /* Quita títulos repetidos dentro de cada fila (ya hay encabezado) */
 .detalle-col .col-title{
   display:none;

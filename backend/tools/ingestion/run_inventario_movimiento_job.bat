@@ -1,25 +1,30 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
-REM === 1) Ir a la raíz del proyecto (ajusta esta ruta) ===
-cd /d "C:\Proyectos\CodigoProyectos\ProyectoSegmentacion"
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..\..\..") do set "PROJECT_ROOT=%%~fI"
 
-REM === 2) Activar venv (ajusta si tu venv tiene otro nombre) ===
-call ".venv\Scripts\activate.bat"
+set "LOG_DIR=%PROJECT_ROOT%\backend\logs"
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 
-REM === 3) Variables de ejecución (puedes ajustar) ===
+for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "TS=%%I"
+set "LOG_FILE=%LOG_DIR%\inventario_movimiento_job_%TS%.log"
+set "STATUS_FILE=%LOG_DIR%\_jobs_status.log"
+
+cd /d "%PROJECT_ROOT%"
+call "%PROJECT_ROOT%\.venv\Scripts\activate.bat"
+
 set INV_BATCH_SIZE=200
 set INV_API_TIMEOUT=120
 
-REM === 4) Ejecutar job ===
-python -m backend.tools.ingestion.inventario_movimiento_job
+python -m backend.tools.ingestion.inventario_movimiento_job >> "%LOG_FILE%" 2>&1
+set "RC=%ERRORLEVEL%"
 
-REM === 5) Log básico de salida ===
-if %ERRORLEVEL% NEQ 0 (
-  echo [%DATE% %TIME%] ERROR inventario_movimiento_job >> backend\tools\ingestion\logs_inventario_movimiento_job.txt
-  exit /b %ERRORLEVEL%
+if %RC% NEQ 0 (
+  echo [%DATE% %TIME%] ERROR inventario_movimiento_job (rc=%RC%) log=%LOG_FILE%>> "%STATUS_FILE%"
+  exit /b %RC%
 ) else (
-  echo [%DATE% %TIME%] OK inventario_movimiento_job >> backend\tools\ingestion\logs_inventario_movimiento_job.txt
+  echo [%DATE% %TIME%] OK inventario_movimiento_job log=%LOG_FILE%>> "%STATUS_FILE%"
 )
 
 endlocal

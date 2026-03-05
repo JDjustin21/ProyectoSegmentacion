@@ -94,6 +94,41 @@ document.addEventListener("DOMContentLoaded", () => {
     return norm(v).toLowerCase();
   }
 
+  function toBool(v) {
+  if (v === true) return true;
+  if (v === false) return false;
+
+  // números
+  if (typeof v === "number") return v !== 0;
+
+  const s = (v ?? "").toString().trim().toLowerCase();
+  if (!s) return false;
+
+  // variantes comunes que llegan desde Postgres/JSON
+  if (["true", "t", "1", "yes", "y", "si", "sí"].includes(s)) return true;
+  if (["false", "f", "0", "no", "n"].includes(s)) return false;
+
+  // ojo: cualquier otro string no lo asumimos true para no “colar” cosas raras
+  return false;
+}
+
+function isRefSegmentada(r) {
+  // 1) si viene un flag explícito
+  const flag =
+    toBool(r?.is_segmented) ||
+    toBool(r?.isSegmented) ||
+    toBool(r?.is_segmentada) ||
+    toBool(r?.isSegmentada);
+
+  if (flag) return true;
+
+  // 2) si no viene flag o viene raro, usamos el conteo (lo más confiable en tu caso)
+  const n = Number(r?.tiendas_activas_segmentadas ?? r?.tiendasActivasSegmentadas ?? 0);
+  if (Number.isFinite(n) && n > 0) return true;
+
+  return false;
+}
+
   // "S, M, L" -> ["S","M","L"]
   // "10, 12, 14" -> ["10","12","14"]
   // "12/18, 18/24" -> ["12/18","18/24"]
@@ -124,6 +159,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return sinPrefijo.replace(/\s+/g, " ").trim();
   }
 
+  
+
   // =========================================================
   // 4) Config derivada (arrays) para reglas de tallas
   // =========================================================
@@ -141,7 +178,8 @@ document.addEventListener("DOMContentLoaded", () => {
     estado: "",
     cuento: "",
     categoria: "",
-    referencia: ""
+    referencia: "",
+    soloSegmentadas: false
   };
 
   // =========================================================
@@ -153,8 +191,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const filtroCuento = document.getElementById("filtroCuento");
   const filtroCategoria = document.getElementById("filtroCategoria");
   const filtroReferencia = document.getElementById("filtroReferencia");
+  const filtroSoloSegmentadas = document.getElementById("filtroSoloSegmentadas");
 
   const listaCategorias = document.getElementById("listaCategorias");
+  const listaCuentos = document.getElementById("listaCuentos");
   const listaReferencias = document.getElementById("listaReferencias");
 
   const prevBtn = document.getElementById("prevPage");
@@ -186,10 +226,25 @@ document.addEventListener("DOMContentLoaded", () => {
       if (filtros.portafolio && port !== norm(filtros.portafolio)) return false;
       if (filtros.linea && lin !== norm(filtros.linea)) return false;
       if (filtros.estado && est !== norm(filtros.estado)) return false;
-      if (filtros.cuento && cue !== norm(filtros.cuento)) return false;
+      const cueFiltro = normLower(filtros.cuento);
+      const cueNorm = normLower(cue);
+
+      if (cueFiltro) {
+        // Si el usuario escribió el cuento completo, funciona “igual que antes” (exacto)
+        if (cueNorm === cueFiltro) {
+          // ok exacto
+        } else {
+          // Mientras escribe, hacemos búsqueda parcial para que filtre en tiempo real
+          if (!cueNorm.includes(cueFiltro)) return false;
+        }
+      }
 
       if (catFiltro && !cat.includes(catFiltro)) return false;
       if (refFiltro && !ref.includes(refFiltro)) return false;
+
+      if (filtros.soloSegmentadas === true) {
+        if (!isRefSegmentada(r)) return false;
+      }
 
       return true;
     });
@@ -251,18 +306,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // Cuento
     const cuentos = [...new Set(datasetFiltrado.map(r => norm(r.cuento)).filter(Boolean))].sort();
 
-    if (filtroCuento) {
-      const valorActual = norm(filtros.cuento);
-      filtroCuento.innerHTML = `<option value="">Todos</option>`;
+    if (listaCuentos) {
+      listaCuentos.innerHTML = "";
       cuentos.forEach(c => {
         const opt = document.createElement("option");
         opt.value = c;
-        opt.textContent = c;
-        if (c === valorActual) opt.selected = true;
-        filtroCuento.appendChild(opt);
+        listaCuentos.appendChild(opt);
       });
     }
-  }
+}
 
   // =========================================================
   // 9) Actualizar datalists (categoría / referencia)
@@ -342,7 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
     render();
   });
 
-  filtroCuento?.addEventListener("change", e => {
+  filtroCuento?.addEventListener("input", e => {
     filtros.cuento = norm(e.target.value);
     currentPage = 1;
     render();
@@ -360,6 +412,12 @@ document.addEventListener("DOMContentLoaded", () => {
     render();
   });
 
+  filtroSoloSegmentadas?.addEventListener("change", e => {
+    filtros.soloSegmentadas = e.target.checked === true;
+    currentPage = 1;
+    render();
+  });
+
   btnLimpiar?.addEventListener("click", () => {
     filtros.portafolio = "";
     filtros.linea = "";
@@ -367,6 +425,7 @@ document.addEventListener("DOMContentLoaded", () => {
     filtros.cuento = "";
     filtros.categoria = "";
     filtros.referencia = "";
+    filtros.soloSegmentadas = false;
 
     if (filtroPortafolio) filtroPortafolio.value = "";
     if (filtroLinea) filtroLinea.value = "";
@@ -374,6 +433,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (filtroCuento) filtroCuento.value = "";
     if (filtroCategoria) filtroCategoria.value = "";
     if (filtroReferencia) filtroReferencia.value = "";
+    if (filtroSoloSegmentadas) filtroSoloSegmentadas.checked = false;
 
     currentPage = 1;
     render();
@@ -491,8 +551,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const refObj = referencias.find(r => norm(r.referencia) === referenciaSku);
     const tallasConteo = refObj?.tallasConteo || null;
-    const codigoBarras = norm(refObj?.codigoBarras);
-    const tipoInventario = norm(refObj?.tipoInventario);
+    const codigoBarras = norm(refObj?.codigoBarras || refObj?.codigo_barras || "");
+    // mapa talla -> EAN (CLAVE)
+    const codigosBarrasPorTalla = refObj?.codigosBarrasPorTalla || refObj?.codigos_barras_por_talla || null;
+
+    const tipoInventario = norm(refObj?.tipoInventario || refObj?.tipo_inventario || "");
 
     fetch("/segmentacion/api/referencias/ack", {
       method: "POST",
@@ -519,6 +582,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tallasFinal,
       tallasConteo,
       codigoBarras,
+      codigosBarrasPorTalla,
       tipoInventario
     });
   });

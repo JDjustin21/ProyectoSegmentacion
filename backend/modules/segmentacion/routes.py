@@ -267,6 +267,9 @@ def api_metricas():
 
         repo = PostgresRepository(settings.POSTGRES_DSN)
 
+        linea = (request.args.get("linea") or "").strip()
+        dependencia = (request.args.get("dependencia") or "").strip() or None
+
         resumen, detalle = repo.obtener_metricas_por_referencia(
             referencia_sku=referencia_sku,
             llave_naval=llave_naval,
@@ -278,18 +281,61 @@ def api_metricas():
             view_rotacion_tienda=settings.METRICAS_ROTACION_TIENDA_VIEW,
         )
 
+        existencia = repo.obtener_existencia_por_talla(
+            referencia_sku=referencia_sku,
+            llave_naval=llave_naval,
+            view_existencia_talla=settings.METRICAS_EXISTENCIA_TALLA_VIEW,
+        )
+
+        part_linea = []
+        if linea:
+            part_linea = repo.obtener_participacion_linea_por_tiendas(
+                linea=linea,
+                dependencia=dependencia,
+                view_part_linea=settings.METRICAS_PART_VENTA_LINEA_VIEW,
+            )
+
         return jsonify({
             "ok": True,
             "data": {
                 "referenciaSku": referencia_sku,
                 "resumenPorTienda": resumen,
                 "detallePorTalla": detalle,
+                "existenciaPorTalla": existencia,
             }
         })
     except Exception as ex:
         current_app.logger.exception("Error en /api/metricas")
         return jsonify({"ok": False, "error": str(ex), "trace": traceback.format_exc()}), 500
-    
+
+@segmentacion_bp.get("/api/metricas/participacion-linea")
+@login_required
+def api_metricas_participacion_linea():
+    """
+    Devuelve participación por línea (3 meses) por tienda.
+
+    Query params:
+    - linea 
+    - dependencia -> si viene, limita resultados a ese cliente
+    """
+    try:
+        linea = (request.args.get("linea") or "").strip()
+        if not linea:
+            return jsonify({"ok": False, "error": "Falta query param: linea"}), 400
+
+        dependencia = (request.args.get("dependencia") or "").strip() or None
+
+        repo = PostgresRepository(settings.POSTGRES_DSN)
+        rows = repo.obtener_participacion_linea_por_tiendas(
+            linea=linea,
+            dependencia=dependencia,
+            view_part_linea=settings.METRICAS_PART_VENTA_LINEA_VIEW,
+        )
+
+        return jsonify({"ok": True, "data": rows})
+    except Exception as ex:
+        current_app.logger.exception("Error en /api/metricas/participacion-linea")
+        return jsonify({"ok": False, "error": str(ex), "trace": traceback.format_exc()}), 500
 
 @segmentacion_bp.post("/api/segmentaciones")
 @login_required
@@ -596,7 +642,6 @@ def api_export_csv():
 
         "referenciaSku",
         "codigo_barras",
-        "codigo_barras_sku",
         "descripcion",
         "categoria",
         "linea",
@@ -621,7 +666,7 @@ def api_export_csv():
         "rankin_linea",
         "testeo",
         "fecha_creacion",
-        "fecha_actualizacion"
+        "fecha_actualizacion",
         "semana1",
         "semana2",
         "semana3",
@@ -630,6 +675,7 @@ def api_export_csv():
         "semana6",
         "semana7",
         "semana8",
+        "TotalVentasSeamanal"
     ]
 
     sio = io.StringIO()
@@ -644,6 +690,18 @@ def api_export_csv():
 
         wk = ventas_map.get((ref, llave, ean), {}) or {}
 
+        def _to_int(v):
+            try:
+                # maneja Decimal, float, int, str "1.0"
+                return int(float(v))
+            except Exception:
+                return 0
+            
+        if r.get("estado_segmentacion") == "INACTIVO":
+            r["estado_segmentacion"] = "INACTIVO"
+            r["estado_detalle"] = "INACTIVO"
+            r["fecha_actualizacion"] = datetime.now(TZ_BOGOTA).isoformat()
+
         writer.writerow({
            
             "id_segmentacion": r.get("id_segmentacion"),
@@ -653,7 +711,6 @@ def api_export_csv():
 
             "referenciaSku": r.get("referencia"),
             "codigo_barras": r.get("codigo_barras"),
-            "codigo_barras_sku": r.get("codigo_barras_sku"),
             "descripcion": r.get("descripcion"),
             "categoria": r.get("categoria"),
             "linea": r.get("linea"),
@@ -679,14 +736,15 @@ def api_export_csv():
             "testeo": r.get("testeo"),
             "fecha_actualizacion": r.get("fecha_actualizacion"),
             "fecha_creacion": r.get("fecha_creacion"),
-            "semana1": wk.get("semana1", 0),
-            "semana2": wk.get("semana2", 0),
-            "semana3": wk.get("semana3", 0),
-            "semana4": wk.get("semana4", 0),
-            "semana5": wk.get("semana5", 0),
-            "semana6": wk.get("semana6", 0),
-            "semana7": wk.get("semana7", 0),
-            "semana8": wk.get("semana8", 0),
+            "semana1": _to_int(wk.get("semana1", 0)),
+            "semana2": _to_int(wk.get("semana2", 0)),
+            "semana3": _to_int(wk.get("semana3", 0)),
+            "semana4": _to_int(wk.get("semana4", 0)),
+            "semana5": _to_int(wk.get("semana5", 0)),
+            "semana6": _to_int(wk.get("semana6", 0)),
+            "semana7": _to_int(wk.get("semana7", 0)),
+            "semana8": _to_int(wk.get("semana8", 0)),
+            "TotalVentasSeamanal": sum(_to_int(wk.get(f"semana{i}", 0)) for i in range(1, 9))
         })
 
     # Tip: utf-8-sig ayuda a Excel a abrir acentos bien (BOM)

@@ -21,6 +21,7 @@
   const API_ULTIMA = "/segmentacion/api/segmentaciones/ultima";
   const API_GUARDAR = "/segmentacion/api/segmentaciones";
   const API_METRICAS = "/segmentacion/api/metricas";
+  const API_PART_LINEA = "/segmentacion/api/metricas/participacion-linea";
 
   // =========================
   // 2) Helpers puros
@@ -218,6 +219,8 @@
     metricas: {
       resumenByLlave: {},        // llave_naval -> { cpd_total, venta_promedio_mensual_total, ... }
       detalleByLlaveTalla: {},   // llave_naval -> talla -> [{ean, cpd, venta_promedio_mensual}, ...]
+      partLineaByLlave: {},     // llave_naval -> { participacion_venta_linea }
+      existenciaByLlaveTalla: {}, // llave_naval -> talla -> existencia
     },
 
     ref: {
@@ -268,6 +271,12 @@
   function toNumberOrZero(v) {
     const n = Number((v ?? "").toString().replace(",", ".").trim());
     return Number.isFinite(n) ? n : 0;
+  }
+
+  function partVentaLinea(llave) {
+    const row = state.metricas?.partLineaByLlave?.[norm(llave)] || null;
+    const n = toNumberOrNull(row?.participacion_venta_linea);
+    return n; // null si no existe
   }
 
   function toNumberOrNull(v) {
@@ -364,7 +373,32 @@
     const tallas = Array.isArray(state.ref.tallasFinal) ? state.ref.tallasFinal : [];
     dom.tiendasContainer.innerHTML = "";
 
-    const tiendas = Array.isArray(state.tiendas) ? state.tiendas : [];
+    const tiendasRaw = Array.isArray(state.tiendas) ? state.tiendas : [];
+    
+    const tiendas = [...tiendasRaw].sort((a, b) => {
+      const la = norm(a.llave_naval);
+      const lb = norm(b.llave_naval);
+
+      const pa = partVentaLinea(la);
+      const pb = partVentaLinea(lb);
+
+      const aHas = (pa !== null && Number.isFinite(pa));
+      const bHas = (pb !== null && Number.isFinite(pb));
+
+      if (aHas && bHas) {
+        if (pb !== pa) return pb - pa; // desc
+      } else if (aHas && !bHas) {
+        return -1; // a primero
+      } else if (!aHas && bHas) {
+        return 1; // b primero
+      }
+
+      // Tie-breaker estable
+      const na = norm(a.desc_dependencia) || norm(a.dependencia);
+      const nb = norm(b.desc_dependencia) || norm(b.dependencia);
+      return na.localeCompare(nb);
+    });
+    
     if (tiendas.length === 0) {
       dom.tiendasContainer.innerHTML = `
         <div class="alert alert-warning mb-0">
@@ -383,7 +417,7 @@
         <div class="detalle-col">Perfil</div>
         <div class="detalle-col">Activo</div>
         <div class="detalle-col">Tallas</div>
-        <div class="detalle-col">Rotación Hist.</div>
+        <div class="detalle-col">Metricas</div>
       </div>
     `;
 
@@ -413,6 +447,12 @@
         ? (partVentaProm * 100).toFixed(decimals) + "%"
         : "—";
 
+      const partLinea = state.metricas?.partLineaByLlave?.[llave] || null;
+      const partLineaNum = toNumberOrNull(partLinea?.participacion_venta_linea);
+      const partLineaTxt = (partLineaNum !== null)
+        ? (partLineaNum * 100).toFixed(decimals) + "%"
+        : "—";
+
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
 
       const isActive = isStoreActive(llave);
@@ -428,9 +468,19 @@
 
         const ean = row0 ? norm(row0.ean) : "";
         const cpdTalla = row0 ? fmtFixed(row0.cpd, decimals) : "—";
-        const rotacionTalla = row0?.rotacion_talla != null
-              ? (row0.rotacion_talla * 100).toFixed(decimals) + '%'
-              : "—";
+        const rotMap = state.metricas?.rotacionByLlaveTalla?.[llave] || {};
+        const rotVal =
+          (row0 && row0.rotacion_talla != null)
+            ? toNumberOrNull(row0.rotacion_talla)
+            : (rotMap[tallaUp] !== undefined ? toNumberOrNull(rotMap[tallaUp]) : null);
+
+        const rotacionTalla = (rotVal !== null)
+          ? (rotVal * 100).toFixed(decimals) + '%'
+          : "—";
+        const existMap = state.metricas?.existenciaByLlaveTalla?.[llave] || {};
+        const existenciaTalla = (existMap[tallaUp] !== undefined)
+          ? fmtFixed(existMap[tallaUp], 0)
+          : "—";
 
         const disabledAttr = isActive ? "" : "disabled";
         const disabledClass = isActive ? "" : "is-disabled";
@@ -452,6 +502,7 @@
             <div class="detalle-metricas-talla">
               <div class="small">CPD: ${cpdTalla}</div>
               <div class="small">Rot: ${rotacionTalla}</div>
+              <div class="small">Exist: ${existenciaTalla}</div>
             </div>
           </div>
         `;
@@ -465,6 +516,7 @@
             <div class="dep">${nombreTienda}</div>
             <div class="meta">${ciudad} / ${zona} / ${clima}</div>
             <div class="small">Testeo: ${testeoFnl || "—"}</div>
+            <div class="small">Part.Venta (Línea): ${partLineaTxt}</div>
           </div>
 
           <!-- 2) Rankin -->
@@ -491,7 +543,7 @@
           <!-- 5) Métricas tienda -->
           <div class="detalle-col">
             <div class="small">Venta Promedio: ${ventaPromTienda}</div>
-            <div class="small">Part. venta: ${partVentaPromTxt}</div>
+            <div class="small">Part.Venta (Ref): ${partVentaPromTxt}</div>
             <div class="small">CPD tienda: ${cpdTienda}</div>
             <div class="small">Rot. total: ${rotacionTienda}</div>
           </div>
@@ -560,19 +612,33 @@
     const data = json.data || {};
     const resumen = Array.isArray(data.resumenPorTienda) ? data.resumenPorTienda : [];
     const detalle = Array.isArray(data.detallePorTalla) ? data.detallePorTalla : [];
+    const existenciaArr = Array.isArray(data.existenciaPorTalla) ? data.existenciaPorTalla : [];
 
+    // =========================
+    // Existencia por talla (independiente)
+    // =========================
+    const existenciaByLlaveTalla = {};
+    existenciaArr.forEach(r => {
+      const llave = norm(r.llave_naval);
+      const talla = norm(r.talla).toUpperCase();
+      if (!llave || !talla) return;
+
+      if (!existenciaByLlaveTalla[llave]) existenciaByLlaveTalla[llave] = {};
+      existenciaByLlaveTalla[llave][talla] = toNumberOrZero(r.existencia_talla);
+    });
+
+    // =========================
+    // Resumen por tienda (promedio rotación tienda)
+    // =========================
     const resumenByLlave = {};
-    const acc = {}; // llave -> { sumRot, nRot, sampleRow }
+    const acc = {}; // llave -> { sumRot, nRot }
 
-    // 1) recorremos todas las filas del resumen
     resumen.forEach(r => {
       const llave = norm(r.llave_naval);
       if (!llave) return;
 
-      // guardamos una "fila base" (puede ser la última, como hoy)
       resumenByLlave[llave] = { ...r };
 
-      // acumulamos SOLO rotación
       if (!acc[llave]) acc[llave] = { sumRot: 0, nRot: 0 };
       const rot = toNumberOrNull(r.rotacion_tienda);
       if (rot !== null) {
@@ -581,12 +647,16 @@
       }
     });
 
-    // 2) sobrescribimos rotacion_tienda con el promedio
     Object.entries(acc).forEach(([llave, a]) => {
       if (!resumenByLlave[llave]) return;
       resumenByLlave[llave].rotacion_tienda = a.nRot > 0 ? (a.sumRot / a.nRot) : null;
     });
 
+    // =========================
+    // Detalle por talla
+    // Opción 1: FULL OUTER JOIN en backend
+    // => detalle trae CPD si existe, y rotación aunque NO exista CPD
+    // =========================
     const detalleByLlaveTalla = {};
     detalle.forEach(r => {
       const llave = norm(r.llave_naval);
@@ -595,13 +665,55 @@
 
       if (!detalleByLlaveTalla[llave]) detalleByLlaveTalla[llave] = {};
       if (!detalleByLlaveTalla[llave][talla]) detalleByLlaveTalla[llave][talla] = [];
+
       detalleByLlaveTalla[llave][talla].push({
-            ...r,
-            rotacion_talla: r.rotacion_talla !== undefined ? r.rotacion_talla : null
-        });
+        ...r,
+        // mantenemos null si viene null (para que el render muestre "—")
+        rotacion_talla: (r.rotacion_talla === undefined ? null : r.rotacion_talla),
+        cpd: (r.cpd === undefined ? null : r.cpd),
+        venta_promedio_mensual: (r.venta_promedio_mensual === undefined ? null : r.venta_promedio_mensual),
+      });
     });
 
-    state.metricas = { resumenByLlave, detalleByLlaveTalla };
+    // =========================
+    // Participación por línea (igual que antes)
+    // =========================
+    const lineaParaPart = norm(state.ref.lineaTexto) || norm(state.ref.lineaRaw);
+    const depFiltro = norm(dom.filtroDependencia?.value);
+
+    let partLineaByLlave = {};
+    if (lineaParaPart) {
+      try {
+        const q2 = buildQuery({ linea: lineaParaPart, dependencia: depFiltro });
+        const url2 = `${API_PART_LINEA}?${q2}`;
+        const json2 = await fetchJson(url2);
+
+        if (json2.ok) {
+          const arr = Array.isArray(json2.data) ? json2.data : [];
+          arr.forEach(r => {
+            const llave = norm(r.llave_naval);
+            if (!llave) return;
+            partLineaByLlave[llave] = {
+              participacion_venta_linea: toNumberOrNull(r.participacion_venta_linea),
+              venta_promedio_mensual_linea_tienda: toNumberOrNull(r.venta_promedio_mensual_linea_tienda),
+              venta_promedio_mensual_linea_cliente: toNumberOrNull(r.venta_promedio_mensual_linea_cliente),
+            };
+          });
+        }
+      } catch (e) {
+        console.warn("[DETALLE] Error cargando participación por línea:", e?.message || e);
+      }
+    }
+
+    // Guardamos en state
+    state.metricas = {
+      resumenByLlave,
+      detalleByLlaveTalla,
+      partLineaByLlave,
+      existenciaByLlaveTalla,
+      idSegmentacionActual: null,
+    };
+
     calcularYActualizarMetricas(dom);
   }
 
@@ -618,16 +730,25 @@
 
     const data = json.data || {};
     const seg = data.segmentacion || {};
+    
     const detalle = Array.isArray(seg.detalle) ? seg.detalle : (Array.isArray(data.detalle) ? data.detalle : []);
 
     detalle.forEach(d => {
       const llave = norm(d.llave_naval);
       const talla = norm(d.talla);
       const cantidad = Number(d.cantidad || 0);
+      const estadoDetalle = norm(d.estado_detalle || d.estadoDetalle || "Activo").toLowerCase();
+      state.idSegmentacionActual = seg.id_segmentacion || seg.idSegmentacion || seg.id_segmentacion_actual || null;
 
       if (!llave || !talla) return;
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
       state.cantidades[llave][talla] = cantidad;
+      if (estadoDetalle === "inactivo") {
+        state.activoPorTienda[llave] = false;
+      } else {
+        // si es Activo, lo encendemos (aunque cantidad sea 0 o >0)
+        state.activoPorTienda[llave] = true;
+      }
       if (cantidad > 0) state.activoPorTienda[llave] = true;
     });
   }
@@ -715,7 +836,18 @@
       codigo_barras: state.ref.codigoBarras,
       codigosBarrasPorTalla: state.ref.codigosBarrasPorTalla,
       tipo_inventario: state.ref.tipoInventario,
+      color: state.ref.color,
+      id_segmentacion: state.metricas.idSegmentacionActual || null,
     };
+
+    const tiendasEstado = {};
+    const tiendas = Array.isArray(state.tiendas) ? state.tiendas : [];
+    tiendas.forEach(t => {
+      const llave = norm(t.llave_naval);
+      if (!llave) return;
+      tiendasEstado[llave] = isStoreActive(llave);
+    });
+    payload.tiendas_estado = tiendasEstado;
 
     const detalle = [];
     Object.entries(state.cantidades).forEach(([llave_naval, byTalla]) => {
@@ -741,10 +873,6 @@
     if (!payload.linea) throw new Error("Falta línea para guardar.");
     if (!Array.isArray(payload.detalle)) payload.detalle = [];
 
-    console.log("[GUARDAR] ref:", payload.referenciaSku, "linea:", payload.linea);
-    console.log("[GUARDAR] codigosBarrasPorTalla keys:", Object.keys(payload.codigosBarrasPorTalla || {}).slice(0, 10));
-    console.log("[GUARDAR] detalle len:", payload.detalle?.length || 0);
-    console.log("[GUARDAR] detalle sample:", payload.detalle?.[0]);
 
     const res = await fetch(API_GUARDAR, {
       method: "POST",
@@ -794,7 +922,7 @@
     const tallasFromPayload = Array.isArray(payload.tallasFinal)
       ? payload.tallasFinal
       : (Array.isArray(payload.tallas) ? payload.tallas : norm(payload.tallas).split(","));
-    state.ref.tallasFinal = sortTallas(payload.tallasFinal);
+    state.ref.tallasFinal = sortTallas(tallasFromPayload);
     state.ref.tallasConteo = payload.tallasConteo || null;
 
     // Reset modal
@@ -805,7 +933,7 @@
 
     // Header
     dom.tituloEl.textContent = state.ref.referenciaSku || "Detalle de referencia";
-    dom.subtituloEl.textContent = `${state.ref.descripcion} • ${state.ref.categoria} • ${state.ref.lineaTexto || state.ref.lineaRaw || "Sin línea"}`;
+    dom.subtituloEl.textContent = `${state.ref.descripcion} • ${state.ref.categoria} • ${state.ref.color} • ${state.ref.lineaTexto || state.ref.lineaRaw || "Sin línea"}`;
 
     // =========================
     // Imagen del SKU en el modal (igual que en las cards)
@@ -891,7 +1019,7 @@
       const willBeActive = !isStoreActive(llave);
 
       // Si se apaga, limpiamos cantidades
-      setStoreActive(llave, willBeActive, { clearQty: !willBeActive });
+      setStoreActive(llave, willBeActive, { clearQty: false });
 
       renderTiendas(dom);
     });
@@ -1030,8 +1158,6 @@
         const resp = await guardarSegmentacion(dom);
 
         dom.footerInfoEl.textContent = `Guardado exitoso • ${new Date().toLocaleString()}`;
-
-        console.log("[DETALLE] detalle sample:", payload.detalle?.[0]);
 
         // Dispara evento SOLO después de guardar OK
         window.dispatchEvent(new CustomEvent("segmentacion:guardada", {

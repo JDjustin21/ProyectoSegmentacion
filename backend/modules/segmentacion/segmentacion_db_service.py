@@ -11,6 +11,7 @@ from backend.repositories.postgres_repository import PostgresRepository
 
 TZ_BOGOTA = ZoneInfo("America/Bogota")
 CLASIFICACIONES_EXACTAS = {"AA", "A", "B", "C", "NA"}
+TESTEO_EXACTO = {"TESTEO", "NO TESTEO"}
 
 
 class SegmentacionDbService:
@@ -64,6 +65,8 @@ class SegmentacionDbService:
         clima_v = (clima or "").strip()
         testeo_v = (testeo or "").strip()
         clasificacion_v = (clasificacion or "").strip()
+        testeo_up = " ".join(testeo_v.upper().split())
+        testeo_is_exact = testeo_up in TESTEO_EXACTO
 
         # Normalización para decidir si la clasificación debe ser exacta (AA/A/B/C/NA)
         clasif_up = clasificacion_v.upper().replace(" ", "")
@@ -97,7 +100,17 @@ class SegmentacionDbService:
               AND (%(zona)s = '' OR v.zona ILIKE %(zona_like)s)
               AND (%(ciudad)s = '' OR v.ciudad ILIKE %(ciudad_like)s)
               AND (%(clima)s = '' OR v.clima ILIKE %(clima_like)s)
-              AND (%(testeo)s = '' OR COALESCE(v.testeo_fnl,'') ILIKE %(testeo_like)s)
+              AND (
+                    %(testeo)s = ''
+                    OR (
+                        %(testeo_is_exact)s = TRUE
+                        AND UPPER(regexp_replace(COALESCE(v.testeo_fnl,''), '\s+', ' ', 'g')) = %(testeo_exact)s
+                    )
+                    OR (
+                        %(testeo_is_exact)s = FALSE
+                        AND COALESCE(v.testeo_fnl,'') ILIKE %(testeo_like)s
+                    )
+                )
 
               -- clasificación:
               -- si es exacta (AA/A/B/C/NA) -> compara exacto
@@ -129,6 +142,8 @@ class SegmentacionDbService:
                 "clima": clima_v,
                 "clima_like": f"%{clima_v}%",
                 "testeo": testeo_v,
+                "testeo_is_exact": testeo_is_exact,
+                "testeo_exact": testeo_up,
                 "testeo_like": f"%{testeo_v}%",
                 "clasificacion": clasificacion_v,
                 "clasificacion_is_exact": clasificacion_is_exact,
@@ -232,10 +247,20 @@ class SegmentacionDbService:
             tallas_usadas.add(talla)
             codigo_barras = (d.get("codigo_barras") or "").strip()
 
-            filas_activo.append({"llave_naval": llave, "talla": talla, "cantidad": cantidad, "codigo_barras": codigo_barras or None})
+            filas_activo.append({"llave_naval": llave, 
+                                 "talla": talla, 
+                                 "cantidad": cantidad, 
+                                 "codigo_barras": codigo_barras or None})
 
         new_keys = {(r["llave_naval"], r["talla"]) for r in filas_activo}
         nueva_activa = bool(new_keys)
+
+        tiendas_estado = payload.get("tiendas_estado") or {}
+        if not isinstance(tiendas_estado, dict):
+            tiendas_estado = {}
+
+        llaves_inactivas = [k.strip() for k, v in tiendas_estado.items() if str(v).lower() in ("false", "0") or v is False]
+        llaves_inactivas = [k for k in llaves_inactivas if k]
 
         def _tx(cur):
             # 1) Versión activa (misma transacción)
@@ -254,116 +279,156 @@ class SegmentacionDbService:
             # 2) Refrescar snapshot (misma transacción)
             cur.execute("SELECT * FROM public.refresh_maestra_tiendas_actual();")
 
-            # 3) Tomar última cabecera ACTIVA y bloquearla para evitar carreras
-            cur.execute("""
-                SELECT id_segmentacion
-                FROM segmentacion
-                WHERE referencia = %(ref)s
-                  AND COALESCE(estado_segmentacion,'Activa') = 'Activa'
-                ORDER BY fecha_creacion DESC
-                LIMIT 1
-                FOR UPDATE;
-            """, {"ref": ref})
-            last = cur.fetchone()
-            last_id = int(last["id_segmentacion"]) if last else None
+           # 3) Determinar id_segmentacion sobre el cual vamos a trabajar
+            payload_id = payload.get("id_segmentacion") or payload.get("id_segmentacion_actual")
+            id_seg = int(payload_id) if payload_id else None
 
-            # 4) Keys previas activas (cantidad > 0)
-            prev_keys = set()
-            if last_id:
+            if id_seg:
+                # validar que exista y corresponda a la referencia
                 cur.execute("""
-                    SELECT llave_naval, talla
-                    FROM segmentacion_detalle
-                    WHERE id_segmentacion = %(id)s
-                      AND COALESCE(estado_detalle,'Activo') = 'Activo'
-                      AND cantidad > 0;
-                """, {"id": last_id})
-                prev_rows = cur.fetchall() or []
-                prev_keys = {(r["llave_naval"], r["talla"]) for r in prev_rows}
+                    SELECT id_segmentacion
+                    FROM segmentacion
+                    WHERE id_segmentacion = %(id)s AND referencia = %(ref)s
+                    FOR UPDATE;
+                """, {"id": id_seg, "ref": ref})
+                ok = cur.fetchone()
+                if not ok:
+                    # si el frontend mandó un id que no existe, caemos a "usar la última"
+                    id_seg = None
 
-            desactivadas = prev_keys - new_keys
+            if not id_seg:
+                # tomar última (activa o la más reciente)
+                cur.execute("""
+                    SELECT id_segmentacion
+                    FROM segmentacion
+                    WHERE referencia = %(ref)s
+                    ORDER BY fecha_creacion DESC
+                    LIMIT 1
+                    FOR UPDATE;
+                """, {"ref": ref})
+                last = cur.fetchone()
+                id_seg = int(last["id_segmentacion"]) if last else None
 
-            # 5) Inactivar cabecera anterior (histórico)
-            if last_id:
+            # 4) Si no existe ninguna, creamos cabecera nueva (solo primera vez)
+            if not id_seg:
+                cur.execute("""
+                    INSERT INTO segmentacion (
+                        id_usuario, fecha_creacion, id_version_tiendas, estado_segmentacion,
+                        referencia, codigo_barras, descripcion, categoria, linea,
+                        tipo_portafolio, precio_unitario, estado_sku, cuento, tipo_inventario
+                    )
+                    VALUES (
+                        %(id_usuario)s, %(fecha_creacion)s, %(id_version_tiendas)s, %(estado_segmentacion)s,
+                        %(referencia)s, %(codigo_barras)s, %(descripcion)s, %(categoria)s, %(linea)s,
+                        %(tipo_portafolio)s, %(precio_unitario)s, %(estado_sku)s, %(cuento)s, %(tipo_inventario)s
+                    )
+                    RETURNING id_segmentacion;
+                """, {
+                    "id_usuario": int(payload.get("id_usuario") or DEFAULT_USER_ID),
+                    "fecha_creacion": now,
+                    "id_version_tiendas": id_version_activa,
+                    "estado_segmentacion": "Activa" if nueva_activa else "Inactiva",
+                    "referencia": ref,
+                    "codigo_barras": (payload.get("codigo_barras") or "").strip(),
+                    "descripcion": (payload.get("descripcion") or "").strip(),
+                    "categoria": (payload.get("categoria") or "").strip(),
+                    "linea": (payload.get("linea") or "").strip(),
+                    "tipo_portafolio": (payload.get("tipo_portafolio") or "").strip(),
+                    "precio_unitario": float(payload.get("precio_unitario") or 0.0),
+                    "estado_sku": (payload.get("estado_sku") or "").strip(),
+                    "cuento": (payload.get("cuento") or "").strip(),
+                    "tipo_inventario": (payload.get("tipo_inventario") or "").strip(),
+                })
+                head_row = cur.fetchone()
+                id_seg = int(head_row["id_segmentacion"])
+
+            else:
+                # 5) Si ya existe cabecera, SOLO actualizamos metadata mínima si quieres
+                # (esto NO crea filas nuevas)
                 cur.execute("""
                     UPDATE segmentacion
-                    SET estado_segmentacion = 'Inactiva'
-                    WHERE id_segmentacion = %(id)s;
-                """, {"id": last_id})
-
-            # 6) Insertar nueva cabecera
-            cur.execute("""
-                INSERT INTO segmentacion (
-                    id_usuario, fecha_creacion, id_version_tiendas, estado_segmentacion,
-                    referencia, codigo_barras, descripcion, categoria, linea,
-                    tipo_portafolio, precio_unitario, estado_sku, cuento, tipo_inventario
-                )
-                VALUES (
-                    %(id_usuario)s, %(fecha_creacion)s, %(id_version_tiendas)s, %(estado_segmentacion)s,
-                    %(referencia)s, %(codigo_barras)s, %(descripcion)s, %(categoria)s, %(linea)s,
-                    %(tipo_portafolio)s, %(precio_unitario)s, %(estado_sku)s, %(cuento)s, %(tipo_inventario)s
-                )
-                RETURNING id_segmentacion;
-            """, {
-                "id_usuario": int(payload.get("id_usuario") or DEFAULT_USER_ID),
-                "fecha_creacion": now,
-                "id_version_tiendas": id_version_activa,
-                "estado_segmentacion": "Activa" if nueva_activa else "Inactiva",
-                "referencia": ref,
-                "codigo_barras": (payload.get("codigo_barras") or "").strip(),
-                "descripcion": (payload.get("descripcion") or "").strip(),
-                "categoria": (payload.get("categoria") or "").strip(),
-                "linea": (payload.get("linea") or "").strip(),
-                "tipo_portafolio": (payload.get("tipo_portafolio") or "").strip(),
-                "precio_unitario": float(payload.get("precio_unitario") or 0.0),
-                "estado_sku": (payload.get("estado_sku") or "").strip(),
-                "cuento": (payload.get("cuento") or "").strip(),
-                "tipo_inventario": (payload.get("tipo_inventario") or "").strip(),
-            })
-            head_row = cur.fetchone()
-            if not head_row or "id_segmentacion" not in head_row:
-                raise RuntimeError("No se retornó id_segmentacion al insertar cabecera.")
-            id_seg = int(head_row["id_segmentacion"])
-
-            # 7) Insertar detalle:
-            # - Activos: cantidad>0 (Activo)
-            # - Desactivadas: cantidad=0 (Inactivo) para que aparezcan en CSV
-            filas_insert: List[Dict[str, Any]] = []
-
-            for r in filas_activo:
-                filas_insert.append({
-                    "id_segmentacion": id_seg,
-                    "llave_naval": r["llave_naval"],
-                    "talla": r["talla"],
-                    "cantidad": int(r["cantidad"]),
-                    "codigo_barras": r.get("codigo_barras"),
-                    "estado_detalle": "Activo",
-                    "fecha_actualizacion": now,
+                    SET
+                        id_version_tiendas = %(id_version)s,
+                        -- opcional: si cambian campos del SKU, los actualizas aquí:
+                        codigo_barras = %(codigo_barras)s,
+                        descripcion = %(descripcion)s,
+                        categoria = %(categoria)s,
+                        linea = %(linea)s,
+                        tipo_portafolio = %(tipo_portafolio)s,
+                        precio_unitario = %(precio_unitario)s,
+                        estado_sku = %(estado_sku)s,
+                        cuento = %(cuento)s,
+                        tipo_inventario = %(tipo_inventario)s
+                    WHERE id_segmentacion = %(id_seg)s;
+                """, {
+                    "id_version": id_version_activa,
+                    "id_seg": id_seg,
+                    "codigo_barras": (payload.get("codigo_barras") or "").strip(),
+                    "descripcion": (payload.get("descripcion") or "").strip(),
+                    "categoria": (payload.get("categoria") or "").strip(),
+                    "linea": (payload.get("linea") or "").strip(),
+                    "tipo_portafolio": (payload.get("tipo_portafolio") or "").strip(),
+                    "precio_unitario": float(payload.get("precio_unitario") or 0.0),
+                    "estado_sku": (payload.get("estado_sku") or "").strip(),
+                    "cuento": (payload.get("cuento") or "").strip(),
+                    "tipo_inventario": (payload.get("tipo_inventario") or "").strip(),
                 })
 
-            for (llave, talla) in desactivadas:
-                filas_insert.append({
-                    "id_segmentacion": id_seg,
-                    "llave_naval": llave,
-                    "talla": talla,
-                    "cantidad": 0,
-                    "codigo_barras": None,
-                    "estado_detalle": "Inactivo",
-                    "fecha_actualizacion": now,
-                })
-
-            if filas_insert:
+            # 6) Upsert de detalle para activos (cantidad>0) -> Activo, actualiza qty y barcode
+            if filas_activo:
                 cur.executemany("""
                     INSERT INTO segmentacion_detalle (
                         id_segmentacion, llave_naval, talla, cantidad, codigo_barras, estado_detalle, fecha_actualizacion
                     )
                     VALUES (
-                        %(id_segmentacion)s, %(llave_naval)s, %(talla)s, %(cantidad)s, %(codigo_barras)s, %(estado_detalle)s, %(fecha_actualizacion)s
-                    );
-                """, filas_insert)
+                        %(id_segmentacion)s, %(llave_naval)s, %(talla)s, %(cantidad)s, %(codigo_barras)s, 'Activo', %(fecha_actualizacion)s
+                    )
+                    ON CONFLICT (id_segmentacion, llave_naval, talla)
+                    DO UPDATE SET
+                        cantidad = EXCLUDED.cantidad,
+                        codigo_barras = EXCLUDED.codigo_barras,
+                        estado_detalle = 'Activo',
+                        fecha_actualizacion = EXCLUDED.fecha_actualizacion;
+                """, [{
+                    "id_segmentacion": id_seg,
+                    "llave_naval": r["llave_naval"],
+                    "talla": r["talla"],
+                    "cantidad": int(r["cantidad"]),
+                    "codigo_barras": r.get("codigo_barras"),
+                    "fecha_actualizacion": now,
+                } for r in filas_activo])
 
-            # 8) segmented_at (badge):
-            # si NO hay activos -> segmented_at NULL
-            if nueva_activa:
+            # 7) Para llaves inactivas: SOLO cambiar estado_detalle y fecha_actualizacion
+            # (NO tocar cantidad, NO tocar codigo_barras)
+            if llaves_inactivas:
+                cur.execute("""
+                    UPDATE segmentacion_detalle
+                    SET estado_detalle = 'Inactivo',
+                        fecha_actualizacion = %(now)s
+                    WHERE id_segmentacion = %(id)s
+                    AND llave_naval = ANY(%(llaves)s);
+                """, {"now": now, "id": id_seg, "llaves": llaves_inactivas})
+
+            # 8) estado_segmentacion (regla sugerida):
+            # - Activa si existe al menos un detalle Activo con cantidad>0
+            # - Inactiva si no hay ninguno
+            cur.execute("""
+                SELECT 1
+                FROM segmentacion_detalle
+                WHERE id_segmentacion = %(id)s
+                AND COALESCE(estado_detalle,'Activo') = 'Activo'
+                AND cantidad > 0
+                LIMIT 1;
+            """, {"id": id_seg})
+            has_any = cur.fetchone() is not None
+            cur.execute("""
+                UPDATE segmentacion
+                SET estado_segmentacion = %(estado)s
+                WHERE id_segmentacion = %(id)s;
+            """, {"estado": "Activa" if has_any else "Inactiva", "id": id_seg})
+
+            # 9) referencias_vistas badge (igual que tenías)
+            if has_any:
                 cur.execute("""
                     INSERT INTO public.referencias_vistas (referencia_sku, first_seen, last_seen, segmented_at)
                     VALUES (%(ref)s, %(now)s, %(now)s, %(now)s)
@@ -382,7 +447,7 @@ class SegmentacionDbService:
                         segmented_at = NULL;
                 """, {"ref": ref, "now": now})
 
-            return {"id_seg": id_seg, "desactivadas_count": len(desactivadas)}
+            return {"id_seg": id_seg}
 
         tx_result = self._repo.run_in_transaction(_tx)
 
@@ -394,7 +459,6 @@ class SegmentacionDbService:
                 "tiendas_con_cantidad": len(tiendas_con_cantidad),
                 "total_unidades": total_units,
                 "tallas_usadas": sorted(list(tallas_usadas)),
-                "desactivadas": int(tx_result["desactivadas_count"]),
                 "is_segmented": nueva_activa,
             },
         }
