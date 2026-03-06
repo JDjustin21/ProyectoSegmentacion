@@ -87,7 +87,6 @@
     return res.json();
   }
 
-
   function ensureDatalist(inputEl, id) {
     if (!inputEl) return null;
 
@@ -370,6 +369,7 @@
   // 6) Render: tiendas + tallas
   // =========================
   function renderTiendas(dom) {
+    console.time("[DETALLE] renderTiendas")
     const tallas = Array.isArray(state.ref.tallasFinal) ? state.ref.tallasFinal : [];
     dom.tiendasContainer.innerHTML = "";
 
@@ -409,7 +409,6 @@
     }
 
     const totalVentaProm = totalVentaPromedioTiendasFiltradas();
-    const decimals = getMetricsDecimals(dom);
 
     const headerHtml = `
       <div class="detalle-row-5 detalle-row-head">
@@ -420,7 +419,6 @@
         <div class="detalle-col">Metricas</div>
       </div>
     `;
-
 
     const html = tiendas.map(t => {
       const llave = norm(t.llave_naval);
@@ -553,6 +551,7 @@
 
     dom.tiendasContainer.innerHTML = headerHtml + html;
     updateFooterStats(dom);
+    console.timeEnd("[DETALLE] renderTiendas");
   }
 
   // =========================
@@ -593,18 +592,26 @@
     const url = (`${API_TIENDAS}?${q}`).replace(/[\r\n]/g, "");
     console.log("[DETALLE] GET tiendas:", JSON.stringify(url));
 
+    console.time("[DETALLE] tiendas fetch");
     const json = await fetchJson(url);
+    console.timeEnd("[DETALLE] tiendas fetch");
     if (!json.ok) throw new Error(json.error || "Error consultando tiendas activas");
 
     state.tiendas = extractListDeep(json.data);
+    const llaves = state.tiendas
+    .map(t => norm(t.llave_naval))
+    .filter(Boolean);
     updateModalDatalists(dom, state.tiendas);
 
-    await cargarMetricas(dom);
+    await cargarMetricas(dom, llaves);
   }
 
-  async function cargarMetricas(dom) {
-    const q = buildQuery({ referenciaSku: state.ref.referenciaSku });
-    const url = `${API_METRICAS}?${q}`;
+  async function cargarMetricas(dom, llaves=[]) {
+    const usp = new URLSearchParams();
+    usp.set("referenciaSku", state.ref.referenciaSku);
+    if (llaves.length) usp.set("llaves", llaves.join(","));
+    const url = `${API_METRICAS}?${usp.toString()}`;
+
     const json = await fetchJson(url);
 
     if (!json.ok) throw new Error(json.error || "Error consultando métricas");
@@ -654,8 +661,6 @@
 
     // =========================
     // Detalle por talla
-    // Opción 1: FULL OUTER JOIN en backend
-    // => detalle trae CPD si existe, y rotación aunque NO exista CPD
     // =========================
     const detalleByLlaveTalla = {};
     detalle.forEach(r => {
@@ -676,11 +681,12 @@
     });
 
     // =========================
-    // Participación por línea (igual que antes)
+    // Participación por línea
     // =========================
     const lineaParaPart = norm(state.ref.lineaTexto) || norm(state.ref.lineaRaw);
     const depFiltro = norm(dom.filtroDependencia?.value);
 
+    console.time("[DETALLE] metricas fetch")
     let partLineaByLlave = {};
     if (lineaParaPart) {
       try {
@@ -690,6 +696,7 @@
 
         if (json2.ok) {
           const arr = Array.isArray(json2.data) ? json2.data : [];
+          console.time("[DETALLE] metricas parse/map")
           arr.forEach(r => {
             const llave = norm(r.llave_naval);
             if (!llave) return;
@@ -704,7 +711,6 @@
         console.warn("[DETALLE] Error cargando participación por línea:", e?.message || e);
       }
     }
-
     // Guardamos en state
     state.metricas = {
       resumenByLlave,
@@ -714,10 +720,9 @@
       idSegmentacionActual: null,
     };
 
+    console.timeEnd("[DETALLE] metricas parse/map")
     calcularYActualizarMetricas(dom);
   }
-
-
   // =========================
   // 9) Cargar última segmentación
   // =========================
@@ -725,7 +730,8 @@
     const q = buildQuery({ referenciaSku: state.ref.referenciaSku });
     const url = `${API_ULTIMA}?${q}`;
     const json = await fetchJson(url);
-
+    console.timeEnd("[DETALLE] metricas fetch")
+    
     if (!json.ok) return;
 
     const data = json.data || {};
@@ -819,7 +825,6 @@
       setStoreActive(llave, active, { clearQty });
     });
   }
-
   // =========================
   // 11) Guardar segmentación
   // =========================

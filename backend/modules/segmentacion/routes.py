@@ -269,10 +269,14 @@ def api_metricas():
 
         linea = (request.args.get("linea") or "").strip()
         dependencia = (request.args.get("dependencia") or "").strip() or None
+        llaves_raw = (request.args.get("llaves") or "").strip()
+        llaves = [x.strip() for x in llaves_raw.split(",") if x.strip()] if llaves_raw else []
 
+        t0 = time.perf_counter()
         resumen, detalle = repo.obtener_metricas_por_referencia(
             referencia_sku=referencia_sku,
             llave_naval=llave_naval,
+            
             view_cpd_talla=settings.METRICAS_CPD_TALLA_VIEW,
             view_cpd_tienda=settings.METRICAS_CPD_TIENDA_VIEW,
             view_prom_talla=settings.METRICAS_VENTA_PROM_TALLA_VIEW,
@@ -280,11 +284,21 @@ def api_metricas():
             view_rotacion_talla=settings.METRICAS_ROTACION_TALLA_VIEW,
             view_rotacion_tienda=settings.METRICAS_ROTACION_TIENDA_VIEW,
         )
+        t1 = time.perf_counter()
 
         existencia = repo.obtener_existencia_por_talla(
             referencia_sku=referencia_sku,
             llave_naval=llave_naval,
             view_existencia_talla=settings.METRICAS_EXISTENCIA_TALLA_VIEW,
+        )
+        t2 = time.perf_counter()
+
+        current_app.logger.info(
+            "[METRICAS] ref=%s resumen+detalle=%.2fms existencia=%.2fms total=%.2fms",
+            referencia_sku,
+            (t1 - t0) * 1000,
+            (t2 - t1) * 1000,
+            (t2 - t0) * 1000
         )
 
         part_linea = []
@@ -304,9 +318,11 @@ def api_metricas():
                 "existenciaPorTalla": existencia,
             }
         })
+    
     except Exception as ex:
         current_app.logger.exception("Error en /api/metricas")
         return jsonify({"ok": False, "error": str(ex), "trace": traceback.format_exc()}), 500
+    
 
 @segmentacion_bp.get("/api/metricas/participacion-linea")
 @login_required

@@ -124,7 +124,8 @@ class PostgresRepository:
     def obtener_metricas_por_referencia(self, referencia_sku: str, llave_naval: str | None,
                                     view_cpd_talla: str, view_cpd_tienda: str,
                                     view_prom_talla: str, view_prom_tienda: str,
-                                    view_rotacion_talla: str, view_rotacion_tienda: str):
+                                    view_rotacion_talla: str, view_rotacion_tienda: str,
+                                    llaves: Optional[list[str]] = None):
         """
         Trae métricas desde vistas (Postgres) para una referencia_sku.
         Devuelve:
@@ -142,37 +143,44 @@ class PostgresRepository:
         if not ref:
             return [], []
 
-        params = {"ref": ref, "llave": (llave_naval or "").strip()}
+        params = {"ref": ref, "llave": (llave_naval or "").strip(), "llaves": llaves or []}
 
         where_llave = ""
         if params["llave"]:
             where_llave = " AND t.llave_naval = %(llave)s "
 
         sql_resumen = f"""
+            WITH
+            cpd AS (
+                SELECT llave_naval, referencia_sku, cpd_total
+                FROM public.{v_cpd_tienda}
+                WHERE referencia_sku = %(ref)s
+                {"AND llave_naval = ANY(%(llaves)s)" if params["llaves"] else ""}
+            ),
+            prom AS (
+                SELECT llave_naval, referencia_sku, venta_promedio_mensual_total
+                FROM public.{v_prom_tienda}
+                WHERE referencia_sku = %(ref)s
+                {"AND llave_naval = ANY(%(llaves)s)" if params["llaves"] else ""}
+            ),
+            rot AS (
+                SELECT llave_naval, referencia_sku, rotacion_tienda
+                FROM public.{v_rotacion_tienda}
+                WHERE referencia_sku = %(ref)s
+                {"AND llave_naval = ANY(%(llaves)s)" if params["llaves"] else ""}
+            )
             SELECT
-                llave_naval,
-                referencia_sku,
-                cpd_total,
-                venta_promedio_mensual_total,
-                rotacion_tienda
-            FROM (
-                SELECT
-                    t.llave_naval,
-                    t.referencia_sku,
-                    t.cpd_total,
-                    p.venta_promedio_mensual_total,
-                    r.rotacion_tienda
-                FROM public.{v_cpd_tienda} t
-                LEFT JOIN public.{v_prom_tienda} p
-                    ON p.llave_naval = t.llave_naval
-                AND p.referencia_sku = t.referencia_sku
-                LEFT JOIN public.{v_rotacion_tienda} r
-                    ON r.llave_naval = t.llave_naval
-                AND r.referencia_sku = t.referencia_sku
-                WHERE t.referencia_sku = %(ref)s
-                {where_llave}
-            ) x
-            ORDER BY llave_naval;
+                c.llave_naval,
+                c.referencia_sku,
+                c.cpd_total,
+                p.venta_promedio_mensual_total,
+                r.rotacion_tienda
+            FROM cpd c
+            LEFT JOIN prom p ON p.llave_naval = c.llave_naval
+                            AND p.referencia_sku = c.referencia_sku
+            LEFT JOIN rot  r ON r.llave_naval = c.llave_naval
+                            AND r.referencia_sku = c.referencia_sku
+            ORDER BY c.llave_naval;
         """
 
         where_llave_det = ""
@@ -180,28 +188,54 @@ class PostgresRepository:
             where_llave_det = " AND COALESCE(t.llave_naval, r.llave_naval) = %(llave)s "
 
         sql_detalle = f"""
+            WITH
+            -- Filtramos CADA vista por referencia ANTES del join
+            cpd AS (
+                SELECT llave_naval, referencia_sku, talla, ean, cpd
+                FROM public.{v_cpd_talla}
+                WHERE referencia_sku = %(ref)s
+                {"AND llave_naval = ANY(%(llaves)s)" if params["llaves"] else ""}
+            ),
+            rot AS (
+                SELECT llave_naval, referencia_sku, talla, ean, rotacion_talla
+                FROM public.{v_rotacion_talla}
+                WHERE referencia_sku = %(ref)s
+                {"AND llave_naval = ANY(%(llaves)s)" if params["llaves"] else ""}
+            ),
+            prom AS (
+                SELECT llave_naval, referencia_sku, talla, ean, venta_promedio_mensual
+                FROM public.{v_prom_talla}
+                WHERE referencia_sku = %(ref)s
+                {"AND llave_naval = ANY(%(llaves)s)" if params["llaves"] else ""}
+            ),
+            -- Base de llaves únicas (reemplaza el FULL OUTER JOIN)
+            base AS (
+                SELECT llave_naval, referencia_sku, talla, ean FROM cpd
+                UNION
+                SELECT llave_naval, referencia_sku, talla, ean FROM rot
+            )
             SELECT
-                COALESCE(t.llave_naval, r.llave_naval)        AS llave_naval,
-                COALESCE(t.referencia_sku, r.referencia_sku)  AS referencia_sku,
-                COALESCE(t.talla, r.talla)                    AS talla,
-                COALESCE(t.ean, r.ean)                        AS ean,
-                t.cpd                                         AS cpd,
-                p.venta_promedio_mensual                      AS venta_promedio_mensual,
-                r.rotacion_talla                              AS rotacion_talla
-            FROM public.{v_cpd_talla} t
-            FULL OUTER JOIN public.{v_rotacion_talla} r
-                ON r.llave_naval = t.llave_naval
-                AND r.referencia_sku = t.referencia_sku
-                AND r.talla = t.talla
-                AND COALESCE(r.ean,'') = COALESCE(t.ean,'')
-            LEFT JOIN public.{v_prom_talla} p
-                ON p.llave_naval = COALESCE(t.llave_naval, r.llave_naval)
-                AND p.referencia_sku = COALESCE(t.referencia_sku, r.referencia_sku)
-                AND p.talla = COALESCE(t.talla, r.talla)
-                AND COALESCE(p.ean,'') = COALESCE(COALESCE(t.ean, r.ean),'')
-            WHERE COALESCE(t.referencia_sku, r.referencia_sku) = %(ref)s
-            {where_llave_det}
-            ORDER BY COALESCE(t.llave_naval, r.llave_naval), COALESCE(t.talla, r.talla);
+                b.llave_naval,
+                b.referencia_sku,
+                b.talla,
+                b.ean,
+                c.cpd,
+                p.venta_promedio_mensual,
+                r.rotacion_talla
+            FROM base b
+            LEFT JOIN cpd  c ON c.llave_naval = b.llave_naval
+                            AND c.referencia_sku = b.referencia_sku
+                            AND c.talla = b.talla
+                            AND COALESCE(c.ean,'') = COALESCE(b.ean,'')
+            LEFT JOIN rot  r ON r.llave_naval = b.llave_naval
+                            AND r.referencia_sku = b.referencia_sku
+                            AND r.talla = b.talla
+                            AND COALESCE(r.ean,'') = COALESCE(b.ean,'')
+            LEFT JOIN prom p ON p.llave_naval = b.llave_naval
+                            AND p.referencia_sku = b.referencia_sku
+                            AND p.talla = b.talla
+                            AND COALESCE(p.ean,'') = COALESCE(b.ean,'')
+            ORDER BY b.llave_naval, b.talla;
         """
 
         resumen = self.fetch_all(sql_resumen, params)
