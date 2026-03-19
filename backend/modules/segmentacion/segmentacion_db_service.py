@@ -222,13 +222,16 @@ class SegmentacionDbService:
         if not ref:
             raise RuntimeError("Falta referenciaSku para guardar.")
 
+        referencia_base = (payload.get("referencia") or "").strip()
+        codigo_color = (payload.get("codigo_color") or payload.get("codigoColor") or "").strip()
+        color = (payload.get("color") or "").strip()
+        perfil_prenda = (payload.get("perfil_prenda") or payload.get("perfilPrenda") or "").strip()
+
         detalles = payload.get("detalle") or []
         if not isinstance(detalles, list):
             raise RuntimeError("El campo 'detalle' debe ser una lista.")
 
         # 1) Lista activa desde payload: solo cantidad > 0
-        
-
         filas_activo: List[Dict[str, Any]] = []
         total_units = 0
         tiendas_con_cantidad = set()
@@ -313,14 +316,44 @@ class SegmentacionDbService:
             if not id_seg:
                 cur.execute("""
                     INSERT INTO segmentacion (
-                        id_usuario, fecha_creacion, id_version_tiendas, estado_segmentacion,
-                        referencia, codigo_barras, descripcion, categoria, linea,
-                        tipo_portafolio, precio_unitario, estado_sku, cuento, tipo_inventario
+                        id_usuario,
+                        fecha_creacion,
+                        id_version_tiendas,
+                        estado_segmentacion,
+                        referencia,
+                        referencia_base,
+                        codigo_color,
+                        color,
+                        perfil_prenda,
+                        codigo_barras,
+                        descripcion,
+                        categoria,
+                        linea,
+                        tipo_portafolio,
+                        precio_unitario,
+                        estado_sku,
+                        cuento,
+                        tipo_inventario
                     )
                     VALUES (
-                        %(id_usuario)s, %(fecha_creacion)s, %(id_version_tiendas)s, %(estado_segmentacion)s,
-                        %(referencia)s, %(codigo_barras)s, %(descripcion)s, %(categoria)s, %(linea)s,
-                        %(tipo_portafolio)s, %(precio_unitario)s, %(estado_sku)s, %(cuento)s, %(tipo_inventario)s
+                        %(id_usuario)s,
+                        %(fecha_creacion)s,
+                        %(id_version_tiendas)s,
+                        %(estado_segmentacion)s,
+                        %(referencia)s,
+                        %(referencia_base)s,
+                        %(codigo_color)s,
+                        %(color)s,
+                        %(perfil_prenda)s,
+                        %(codigo_barras)s,
+                        %(descripcion)s,
+                        %(categoria)s,
+                        %(linea)s,
+                        %(tipo_portafolio)s,
+                        %(precio_unitario)s,
+                        %(estado_sku)s,
+                        %(cuento)s,
+                        %(tipo_inventario)s
                     )
                     RETURNING id_segmentacion;
                 """, {
@@ -329,6 +362,10 @@ class SegmentacionDbService:
                     "id_version_tiendas": id_version_activa,
                     "estado_segmentacion": "Activa" if nueva_activa else "Inactiva",
                     "referencia": ref,
+                    "referencia_base": referencia_base or None,
+                    "codigo_color": codigo_color or None,
+                    "color": color or None,
+                    "perfil_prenda": perfil_prenda or None,
                     "codigo_barras": (payload.get("codigo_barras") or "").strip(),
                     "descripcion": (payload.get("descripcion") or "").strip(),
                     "categoria": (payload.get("categoria") or "").strip(),
@@ -349,7 +386,10 @@ class SegmentacionDbService:
                     UPDATE segmentacion
                     SET
                         id_version_tiendas = %(id_version)s,
-                        -- opcional: si cambian campos del SKU, los actualizas aquí:
+                        referencia_base = %(referencia_base)s,
+                        codigo_color = %(codigo_color)s,
+                        color = %(color)s,
+                        perfil_prenda = %(perfil_prenda)s,
                         codigo_barras = %(codigo_barras)s,
                         descripcion = %(descripcion)s,
                         categoria = %(categoria)s,
@@ -363,6 +403,10 @@ class SegmentacionDbService:
                 """, {
                     "id_version": id_version_activa,
                     "id_seg": id_seg,
+                    "referencia_base": referencia_base or None,
+                    "codigo_color": codigo_color or None,
+                    "color": color or None,
+                    "perfil_prenda": perfil_prenda or None,
                     "codigo_barras": (payload.get("codigo_barras") or "").strip(),
                     "descripcion": (payload.get("descripcion") or "").strip(),
                     "categoria": (payload.get("categoria") or "").strip(),
@@ -472,7 +516,13 @@ class SegmentacionDbService:
                 s.id_segmentacion,
                 s.id_usuario,
                 s.id_version_tiendas,
-                s.referencia,
+                s.estado_segmentacion,
+
+                s.referencia AS referencia_sku,
+                s.referencia_base,
+                s.codigo_color,
+                s.color,
+                s.perfil_prenda,
                 s.codigo_barras AS codigo_barras_sku,
                 s.descripcion,
                 s.categoria,
@@ -481,7 +531,6 @@ class SegmentacionDbService:
                 s.estado_sku,
                 s.cuento,
                 s.tipo_inventario,
-                s.estado_segmentacion,
                 s.precio_unitario,
                 s.fecha_creacion,
 

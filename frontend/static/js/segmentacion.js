@@ -1,592 +1,634 @@
-// frontend/js/segmentacion.js
-document.addEventListener("DOMContentLoaded", () => {
-  console.log("JS de segmentación cargado");
-
-  // =========================================================
-  // 1) Configuración desde el HTML (data-attributes)
-  //    - Esto evita hardcode en JS.
-  //    - El backend (Flask) es quien inyecta estos valores.
-  // =========================================================
-  const cardsContainer = document.getElementById("cards-container");
-
-  const cardsPerPage = Number(cardsContainer?.dataset.cardsPerPage);
-  const imagesBaseUrl = (cardsContainer?.dataset.imagesBaseUrl || "").trim();
-  const placeholderUrl = (cardsContainer?.dataset.placeholderUrl || "https://via.placeholder.com/120x120?text=IMG").trim();
-
-  const imageResolverUrl = (cardsContainer?.dataset.imageResolverUrl || "").trim();
-
-  if (!imageResolverUrl) {
-    throw new Error("Falta configuración: data-image-resolver-url en #cards-container");
-  }
-  // Config de tallas (fallbacks)
-  const defaultTallasMvp = (cardsContainer?.dataset.defaultTallasMvp || "").trim();       // Ej: "XS,S,M,L,XL,XXL"
-  const lineasTallasFijasRaw = (cardsContainer?.dataset.lineasTallasFijas || "").trim();  // Ej: "Dama Exterior;Dama Deportivo;..."
-
-  if (!cardsContainer) {
-    throw new Error("No se encontró #cards-container");
-  }
-
-  if (!imagesBaseUrl) {
-    throw new Error("Falta configuración: data-images-base-url en #cards-container");
-  }
-
-  if (!Number.isFinite(cardsPerPage) || cardsPerPage <= 0) {
-    throw new Error("Configuración inválida: data-cards-per-page debe ser un número > 0 en #cards-container");
-  }
-
-  // =========================================================
-  // 2) Dataset JSON embebido (fuente de verdad para cards)
-  // =========================================================
-  const dataScript = document.getElementById("data-referencias");
-  if (!dataScript) {
-    throw new Error("No se encontró #data-referencias con el JSON de referencias");
-  }
-
-  let referencias = [];
-  try {
-    referencias = JSON.parse(dataScript.textContent || "[]");
-  } catch {
-    throw new Error("JSON inválido en #data-referencias");
-  }
-
-  function setReferenciaSegmentadaYConteo(referenciaSku, isSegmented, tiendasActivasSegmentadas) {
-    const refKey = norm(referenciaSku);
-
-    const obj = referencias.find(r => norm(r.referencia) === refKey);
-    if (!obj) return;
-
-    const flag = isSegmented === true;
-
-    obj.is_segmented = flag;
-    obj.isSegmented = flag;
-
-    const n = Number(tiendasActivasSegmentadas);
-    obj.tiendas_activas_segmentadas = Number.isFinite(n) ? n : 0;
-
-    render();
-  }
-
-
-  // Evento que dispara detalle.js SOLO cuando guarda OK
-  window.addEventListener("segmentacion:guardada", (ev) => {
-    const ref = ev?.detail?.referenciaSku;
-    if (!ref) return;
-
-    const resp = ev?.detail?.apiResponse || {};
-
-    // El backend te devuelve esto en resumen.is_segmented
-    const isSeg = resp?.is_segmented;
-    const count = resp?.tiendas_activas_segmentadas;
-
-    if (isSeg === true || isSeg === false) {
-      setReferenciaSegmentadaYConteo(ref, isSeg, count);
-    }
-  });
-
-  // =========================================================
-  // 3) Helpers (funciones puras, sin tocar DOM)
-  // =========================================================
-  function norm(v) {
-    return (v || "").toString().trim();
-  }
-
-  function normLower(v) {
-    return norm(v).toLowerCase();
-  }
-
-  function toBool(v) {
-  if (v === true) return true;
-  if (v === false) return false;
-
-  // números
-  if (typeof v === "number") return v !== 0;
-
-  const s = (v ?? "").toString().trim().toLowerCase();
-  if (!s) return false;
-
-  // variantes comunes que llegan desde Postgres/JSON
-  if (["true", "t", "1", "yes", "y", "si", "sí"].includes(s)) return true;
-  if (["false", "f", "0", "no", "n"].includes(s)) return false;
-
-  // ojo: cualquier otro string no lo asumimos true para no “colar” cosas raras
-  return false;
-}
-
-function isRefSegmentada(r) {
-  // 1) si viene un flag explícito
-  const flag =
-    toBool(r?.is_segmented) ||
-    toBool(r?.isSegmented) ||
-    toBool(r?.is_segmentada) ||
-    toBool(r?.isSegmentada);
-
-  if (flag) return true;
-
-  // 2) si no viene flag o viene raro, usamos el conteo (lo más confiable en tu caso)
-  const n = Number(r?.tiendas_activas_segmentadas ?? r?.tiendasActivasSegmentadas ?? 0);
-  if (Number.isFinite(n) && n > 0) return true;
-
-  return false;
-}
-
-  // "S, M, L" -> ["S","M","L"]
-  // "10, 12, 14" -> ["10","12","14"]
-  // "12/18, 18/24" -> ["12/18","18/24"]
-  function parseCSVList(str) {
-    return (str || "")
-      .split(",")
-      .map(x => x.trim())
-      .filter(Boolean);
-  }
-
-  // "A;B;C" -> ["A","B","C"]
-  function parseSemiColonList(str) {
-    return (str || "")
-      .split(";")
-      .map(x => x.trim())
-      .filter(Boolean);
-  }
-
-  function normalizarLineaTexto(lineaRaw) {
-    const v = norm(lineaRaw);
-    if (!v) return "";
-
-    // Quita prefijo numérico con guion, tolerando espacios variables
-    // Ej: "12 - Hombre Exterior" / "12- Hombre Exterior" / "12  -  Hombre Exterior"
-    const sinPrefijo = v.replace(/^\s*\d+\s*-\s*/g, "");
-
-    // Compacta espacios múltiples por seguridad (evita "Hombre   Exterior")
-    return sinPrefijo.replace(/\s+/g, " ").trim();
-  }
-
-  
-
-  // =========================================================
-  // 4) Config derivada (arrays) para reglas de tallas
-  // =========================================================
-  const defaultTallasArray = parseCSVList(defaultTallasMvp);             // fallback principal
-  const lineasFijasArray = parseSemiColonList(lineasTallasFijasRaw);     // líneas que usan tallas fijas (fallback por línea)
-
-  // =========================================================
-  // 5) Estado UI (paginación y filtros)
-  // =========================================================
-  let currentPage = 1;
-
-  const filtros = {
-    portafolio: "",
-    linea: "",
-    estado: "",
-    cuento: "",
-    categoria: "",
-    referencia: "",
-    soloSegmentadas: false
-  };
-
-  // =========================================================
-  // 6) Elementos UI
-  // =========================================================
-  const filtroPortafolio = document.getElementById("filtroPortafolio");
-  const filtroLinea = document.getElementById("filtroLinea");
-  const filtroEstado = document.getElementById("filtroEstado");
-  const filtroCuento = document.getElementById("filtroCuento");
-  const filtroCategoria = document.getElementById("filtroCategoria");
-  const filtroReferencia = document.getElementById("filtroReferencia");
-  const filtroSoloSegmentadas = document.getElementById("filtroSoloSegmentadas");
-
-  const listaCategorias = document.getElementById("listaCategorias");
-  const listaCuentos = document.getElementById("listaCuentos");
-  const listaReferencias = document.getElementById("listaReferencias");
-
-  const prevBtn = document.getElementById("prevPage");
-  const nextBtn = document.getElementById("nextPage");
-  const pageIndicator = document.getElementById("pageIndicator");
-
-  const btnLimpiar = document.getElementById("btnLimpiar");
-
-  // “inicio de sesión” de la página (para exportar por rango desde que abriste la pantalla)
-  const pageSessionStartIso = new Date().toISOString();
-
-  let totalPages = 1;
-
-  // =========================================================
-  // 7) Filtro sobre DATA (no DOM)
-  // =========================================================
-  function aplicarFiltros() {
-    const catFiltro = normLower(filtros.categoria);
-    const refFiltro = normLower(filtros.referencia);
-
-    return referencias.filter(r => {
-      const port = norm(r.tipoPortafolio);
-      const lin = norm(r.linea);
-      const est = norm(r.estado);
-      const cue = norm(r.cuento);
-      const cat = normLower(r.categoria);
-      const ref = normLower(r.referencia);
-
-      if (filtros.portafolio && port !== norm(filtros.portafolio)) return false;
-      if (filtros.linea && lin !== norm(filtros.linea)) return false;
-      if (filtros.estado && est !== norm(filtros.estado)) return false;
-      const cueFiltro = normLower(filtros.cuento);
-      const cueNorm = normLower(cue);
-
-      if (cueFiltro) {
-        // Si el usuario escribió el cuento completo, funciona “igual que antes” (exacto)
-        if (cueNorm === cueFiltro) {
-          // ok exacto
-        } else {
-          // Mientras escribe, hacemos búsqueda parcial para que filtre en tiempo real
-          if (!cueNorm.includes(cueFiltro)) return false;
-        }
-      }
-
-      if (catFiltro && !cat.includes(catFiltro)) return false;
-      if (refFiltro && !ref.includes(refFiltro)) return false;
-
-      if (filtros.soloSegmentadas === true) {
-        if (!isRefSegmentada(r)) return false;
-      }
-
-      return true;
-    });
-  }
-
-  // =========================================================
-  // 8) Actualizar selects (opciones dependientes)
-  // =========================================================
-  function actualizarSelects(datasetFiltrado) {
-    // Portafolio
-    const portafolios = [...new Set(datasetFiltrado.map(r => norm(r.tipoPortafolio)).filter(Boolean))].sort();
-
-    if (filtroPortafolio) {
-      const valorActual = norm(filtros.portafolio);
-      filtroPortafolio.innerHTML = `<option value="">Todos</option>`;
-      portafolios.forEach(p => {
-        const opt = document.createElement("option");
-        opt.value = p;
-        opt.textContent = p;
-        if (p === valorActual) opt.selected = true;
-        filtroPortafolio.appendChild(opt);
-      });
-    }
-
-    // Línea
-    const baseLineas = filtros.portafolio
-      ? datasetFiltrado.filter(r => norm(r.tipoPortafolio) === norm(filtros.portafolio))
-      : datasetFiltrado;
-
-    const lineas = [...new Set(baseLineas.map(r => norm(r.linea)).filter(Boolean))].sort();
-
-    if (filtroLinea) {
-      const valorActual = norm(filtros.linea);
-      filtroLinea.innerHTML = `<option value="">Todas</option>`;
-      lineas.forEach(l => {
-        const opt = document.createElement("option");
-        opt.value = l;
-        opt.textContent = l;
-        if (l === valorActual) opt.selected = true;
-        filtroLinea.appendChild(opt);
-      });
-    }
-
-    // Estado
-    const estados = [...new Set(datasetFiltrado.map(r => norm(r.estado)).filter(Boolean))].sort();
-
-    if (filtroEstado) {
-      const valorActual = norm(filtros.estado);
-      filtroEstado.innerHTML = `<option value="">Todos</option>`;
-      estados.forEach(e => {
-        const opt = document.createElement("option");
-        opt.value = e;
-        opt.textContent = e;
-        if (e === valorActual) opt.selected = true;
-        filtroEstado.appendChild(opt);
-      });
-    }
-
-    // Cuento
-    const cuentos = [...new Set(datasetFiltrado.map(r => norm(r.cuento)).filter(Boolean))].sort();
-
-    if (listaCuentos) {
-      listaCuentos.innerHTML = "";
-      cuentos.forEach(c => {
-        const opt = document.createElement("option");
-        opt.value = c;
-        listaCuentos.appendChild(opt);
-      });
-    }
-}
-
-  // =========================================================
-  // 9) Actualizar datalists (categoría / referencia)
-  // =========================================================
-  function actualizarDatalists(datasetFiltrado) {
-    const categorias = [...new Set(datasetFiltrado.map(r => norm(r.categoria)).filter(Boolean))].sort();
-    const refs = [...new Set(datasetFiltrado.map(r => norm(r.referencia)).filter(Boolean))].sort();
-
-    if (listaCategorias) {
-      listaCategorias.innerHTML = "";
-      categorias.forEach(c => {
-        const opt = document.createElement("option");
-        opt.value = c;
-        listaCategorias.appendChild(opt);
-      });
-    }
-
-    if (listaReferencias) {
-      listaReferencias.innerHTML = "";
-      refs.forEach(r => {
-        const opt = document.createElement("option");
-        opt.value = r;
-        listaReferencias.appendChild(opt);
-      });
-    }
-  }
-
-  // =========================================================
-  // 10) Render cards (solo página actual)
-  // =========================================================
-
-  function render() {
-    const filtradas = aplicarFiltros();
-
-    totalPages = Math.max(1, Math.ceil(filtradas.length / cardsPerPage));
-    if (currentPage > totalPages) currentPage = 1;
-
-    const visibles = filtradas.slice((currentPage - 1) * cardsPerPage, currentPage * cardsPerPage);
-
-    const cardConfig = { imageResolverUrl, placeholderUrl };
-    cardsContainer.innerHTML = visibles
-      .map(r => window.CardReferencia.crearCardHTML(r, cardConfig))
-      .join("");
-
-
-    if (pageIndicator) pageIndicator.textContent = `Página ${currentPage} de ${totalPages}`;
-    if (prevBtn) prevBtn.disabled = currentPage === 1;
-    if (nextBtn) nextBtn.disabled = currentPage === totalPages;
-
-    actualizarDatalists(filtradas);
-    actualizarSelects(filtradas);
-  }
-
-  // =========================================================
-  // 11) Eventos filtros
-  // =========================================================
-  filtroPortafolio?.addEventListener("change", e => {
-    filtros.portafolio = norm(e.target.value);
-    filtros.linea = "";
-    filtros.categoria = "";
-    filtros.referencia = "";
-    currentPage = 1;
-    render();
-  });
-
-  filtroLinea?.addEventListener("change", e => {
-    filtros.linea = norm(e.target.value);
-    filtros.categoria = "";
-    filtros.referencia = "";
-    currentPage = 1;
-    render();
-  });
-
-  filtroEstado?.addEventListener("change", e => {
-    filtros.estado = norm(e.target.value);
-    currentPage = 1;
-    render();
-  });
-
-  filtroCuento?.addEventListener("input", e => {
-    filtros.cuento = norm(e.target.value);
-    currentPage = 1;
-    render();
-  });
-
-  filtroCategoria?.addEventListener("input", e => {
-    filtros.categoria = norm(e.target.value).toLowerCase();
-    currentPage = 1;
-    render();
-  });
-
-  filtroReferencia?.addEventListener("input", e => {
-    filtros.referencia = norm(e.target.value).toLowerCase();
-    currentPage = 1;
-    render();
-  });
-
-  filtroSoloSegmentadas?.addEventListener("change", e => {
-    filtros.soloSegmentadas = e.target.checked === true;
-    currentPage = 1;
-    render();
-  });
-
-  btnLimpiar?.addEventListener("click", () => {
-    filtros.portafolio = "";
-    filtros.linea = "";
-    filtros.estado = "";
-    filtros.cuento = "";
-    filtros.categoria = "";
-    filtros.referencia = "";
-    filtros.soloSegmentadas = false;
-
-    if (filtroPortafolio) filtroPortafolio.value = "";
-    if (filtroLinea) filtroLinea.value = "";
-    if (filtroEstado) filtroEstado.value = "";
-    if (filtroCuento) filtroCuento.value = "";
-    if (filtroCategoria) filtroCategoria.value = "";
-    if (filtroReferencia) filtroReferencia.value = "";
-    if (filtroSoloSegmentadas) filtroSoloSegmentadas.checked = false;
-
-    currentPage = 1;
-    render();
-  });
-
-  function buildQuery(params) {
-    const usp = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      const value = (v || "").toString().trim();
-      if (value) usp.set(k, value);
-    });
-    return usp.toString();
-  }
-
-  function exportHoyGlobal() {
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const dd = String(today.getDate()).padStart(2, "0");
-    const fecha = `${yyyy}-${mm}-${dd}`;
-
-    window.location.href = `/segmentacion/api/export/csv?${buildQuery({ fecha })}`;
-  }
-
-  function exportSesionGlobal() {
-    const desde = pageSessionStartIso;
-    const hasta = new Date().toISOString();
-    window.location.href = `/segmentacion/api/export/csv?${buildQuery({ desde, hasta })}`;
-  }
-
+  // frontend/js/segmentacion.js
   document.addEventListener("DOMContentLoaded", () => {
-  const btnExportAll = document.getElementById("btnExportAllGlobal");
-  if (btnExportAll) {
-    btnExportAll.addEventListener("click", () => {
-      // Exporta TODO lo guardado (Postgres)
-      window.location.href = "/segmentacion/api/segmentaciones/export/excel";
+    console.log("JS de segmentación cargado");
+
+    // =========================================================
+    // 1) Configuración desde el HTML (data-attributes)
+    //    - Esto evita hardcode en JS.
+    //    - El backend (Flask) es quien inyecta estos valores.
+    // =========================================================
+    const cardsContainer = document.getElementById("cards-container");
+
+    const cardsPerPage = Number(cardsContainer?.dataset.cardsPerPage);
+    const imagesBaseUrl = (cardsContainer?.dataset.imagesBaseUrl || "").trim();
+    const placeholderUrl = (cardsContainer?.dataset.placeholderUrl || "https://via.placeholder.com/120x120?text=IMG").trim();
+
+    const imageResolverUrl = (cardsContainer?.dataset.imageResolverUrl || "").trim();
+
+    if (!imageResolverUrl) {
+      throw new Error("Falta configuración: data-image-resolver-url en #cards-container");
+    }
+    // Config de tallas (fallbacks)
+    const defaultTallasMvp = (cardsContainer?.dataset.defaultTallasMvp || "").trim();       // Ej: "XS,S,M,L,XL,XXL"
+    const lineasTallasFijasRaw = (cardsContainer?.dataset.lineasTallasFijas || "").trim();  // Ej: "Dama Exterior;Dama Deportivo;..."
+
+    if (!cardsContainer) {
+      throw new Error("No se encontró #cards-container");
+    }
+
+    if (!imagesBaseUrl) {
+      throw new Error("Falta configuración: data-images-base-url en #cards-container");
+    }
+
+    if (!Number.isFinite(cardsPerPage) || cardsPerPage <= 0) {
+      throw new Error("Configuración inválida: data-cards-per-page debe ser un número > 0 en #cards-container");
+    }
+
+    // =========================================================
+    // 2) Dataset JSON embebido (fuente de verdad para cards)
+    // =========================================================
+    const dataScript = document.getElementById("data-referencias");
+    if (!dataScript) {
+      throw new Error("No se encontró #data-referencias con el JSON de referencias");
+    }
+
+    let referencias = [];
+    try {
+      referencias = JSON.parse(dataScript.textContent || "[]");
+    } catch {
+      throw new Error("JSON inválido en #data-referencias");
+    }
+
+    function setReferenciaSegmentadaYConteo(referenciaSku, isSegmented, tiendasActivasSegmentadas) {
+      const refKey = norm(referenciaSku);
+
+      const obj = referencias.find(r => norm(r.referencia) === refKey);
+      if (!obj) return;
+
+      const flag = isSegmented === true;
+
+      obj.is_segmented = flag;
+      obj.isSegmented = flag;
+
+      const n = Number(tiendasActivasSegmentadas);
+      obj.tiendas_activas_segmentadas = Number.isFinite(n) ? n : 0;
+
+      render();
+    }
+
+
+    // Evento que dispara detalle.js SOLO cuando guarda OK
+    window.addEventListener("segmentacion:guardada", (ev) => {
+      const ref = ev?.detail?.referenciaSku;
+      if (!ref) return;
+
+      const resp = ev?.detail?.apiResponse || {};
+
+      // El backend te devuelve esto en resumen.is_segmented
+      const isSeg = resp?.is_segmented;
+      const count = resp?.tiendas_activas_segmentadas;
+
+      if (isSeg === true || isSeg === false) {
+        setReferenciaSegmentadaYConteo(ref, isSeg, count);
+      }
     });
+
+    // =========================================================
+    // 3) Helpers (funciones puras, sin tocar DOM)
+    // =========================================================
+    function norm(v) {
+      return (v || "").toString().trim();
+    }
+
+    function normLower(v) {
+      return norm(v).toLowerCase();
+    }
+
+    function toBool(v) {
+    if (v === true) return true;
+    if (v === false) return false;
+
+    // números
+    if (typeof v === "number") return v !== 0;
+
+    const s = (v ?? "").toString().trim().toLowerCase();
+    if (!s) return false;
+
+    // variantes comunes que llegan desde Postgres/JSON
+    if (["true", "t", "1", "yes", "y", "si", "sí"].includes(s)) return true;
+    if (["false", "f", "0", "no", "n"].includes(s)) return false;
+
+    // ojo: cualquier otro string no lo asumimos true para no “colar” cosas raras
+    return false;
   }
-});
-  
-  // =========================================================
-  // 12) Paginación
-  // =========================================================
-  prevBtn?.addEventListener("click", () => {
-    if (currentPage > 1) {
-      currentPage--;
+
+  function isRefSegmentada(r) {
+    // 1) si viene un flag explícito
+    const flag =
+      toBool(r?.is_segmented) ||
+      toBool(r?.isSegmented) ||
+      toBool(r?.is_segmentada) ||
+      toBool(r?.isSegmentada);
+
+    if (flag) return true;
+
+    // 2) si no viene flag o viene raro, usamos el conteo (lo más confiable en tu caso)
+    const n = Number(r?.tiendas_activas_segmentadas ?? r?.tiendasActivasSegmentadas ?? 0);
+    if (Number.isFinite(n) && n > 0) return true;
+
+    return false;
+  }
+
+    // "S, M, L" -> ["S","M","L"]
+    // "10, 12, 14" -> ["10","12","14"]
+    // "12/18, 18/24" -> ["12/18","18/24"]
+    function parseCSVList(str) {
+      return (str || "")
+        .split(",")
+        .map(x => x.trim())
+        .filter(Boolean);
+    }
+
+    // "A;B;C" -> ["A","B","C"]
+    function parseSemiColonList(str) {
+      return (str || "")
+        .split(";")
+        .map(x => x.trim())
+        .filter(Boolean);
+    }
+
+    function normalizarLineaTexto(lineaRaw) {
+      const v = norm(lineaRaw);
+      if (!v) return "";
+
+      // Quita prefijo numérico con guion, tolerando espacios variables
+      // Ej: "12 - Hombre Exterior" / "12- Hombre Exterior" / "12  -  Hombre Exterior"
+      const sinPrefijo = v.replace(/^\s*\d+\s*-\s*/g, "");
+
+      // Compacta espacios múltiples por seguridad (evita "Hombre   Exterior")
+      return sinPrefijo.replace(/\s+/g, " ").trim();
+    }
+
+    
+
+    // =========================================================
+    // 4) Config derivada (arrays) para reglas de tallas
+    // =========================================================
+    const defaultTallasArray = parseCSVList(defaultTallasMvp);             // fallback principal
+    const lineasFijasArray = parseSemiColonList(lineasTallasFijasRaw);     // líneas que usan tallas fijas (fallback por línea)
+
+    // =========================================================
+    // 5) Estado UI (paginación y filtros)
+    // =========================================================
+    let currentPage = 1;
+
+    const filtros = {
+      portafolio: "",
+      linea: "",
+      estado: "",
+      cuento: "",
+      categoria: "",
+      referencia: "",
+      soloSegmentadas: false,
+      soloNoSegmentadas: false
+    };
+
+    // =========================================================
+    // 6) Elementos UI
+    // =========================================================
+    const filtroPortafolio = document.getElementById("filtroPortafolio");
+    const filtroLinea = document.getElementById("filtroLinea");
+    const filtroEstado = document.getElementById("filtroEstado");
+    const filtroCuento = document.getElementById("filtroCuento");
+    const filtroCategoria = document.getElementById("filtroCategoria");
+    const filtroReferencia = document.getElementById("filtroReferencia");
+    const filtroSoloSegmentadas = document.getElementById("filtroSoloSegmentadas");
+    const filtroSoloNoSegmentadas = document.getElementById("filtroSoloNoSegmentadas");
+
+    const listaCategorias = document.getElementById("listaCategorias");
+    const listaCuentos = document.getElementById("listaCuentos");
+    const listaReferencias = document.getElementById("listaReferencias");
+
+    const prevBtn = document.getElementById("prevPage");
+    const nextBtn = document.getElementById("nextPage");
+    const pageIndicator = document.getElementById("pageIndicator");
+
+    const btnLimpiar = document.getElementById("btnLimpiar");
+
+    // “inicio de sesión” de la página (para exportar por rango desde que abriste la pantalla)
+    const pageSessionStartIso = new Date().toISOString();
+
+    let totalPages = 1;
+
+    // =========================================================
+    // 7) Filtro sobre DATA (no DOM)
+    // =========================================================
+    function aplicarFiltros() {
+      const catFiltro = normLower(filtros.categoria);
+      const refFiltro = normLower(filtros.referencia);
+
+      return referencias.filter(r => {
+        const port = norm(r.tipoPortafolio);
+        const lin = norm(r.linea);
+        const est = norm(r.estado);
+        const cue = norm(r.cuento);
+        const cat = normLower(r.categoria);
+        const ref = normLower(r.referencia);
+
+        if (filtros.portafolio && port !== norm(filtros.portafolio)) return false;
+        if (filtros.linea && lin !== norm(filtros.linea)) return false;
+        if (filtros.estado && est !== norm(filtros.estado)) return false;
+        const cueFiltro = normLower(filtros.cuento);
+        const cueNorm = normLower(cue);
+
+        if (cueFiltro) {
+          // Si el usuario escribió el cuento completo, funciona “igual que antes” (exacto)
+          if (cueNorm === cueFiltro) {
+            // ok exacto
+          } else {
+            // Mientras escribe, hacemos búsqueda parcial para que filtre en tiempo real
+            if (!cueNorm.includes(cueFiltro)) return false;
+          }
+        }
+
+        if (catFiltro && !cat.includes(catFiltro)) return false;
+        if (refFiltro && !ref.includes(refFiltro)) return false;
+
+        const estaSegmentada = isRefSegmentada(r);
+        if (filtros.soloSegmentadas === true && !estaSegmentada) return false;
+        if (filtros.soloNoSegmentadas === true && estaSegmentada) return false;
+
+        return true;
+      });
+    }
+
+    // =========================================================
+    // 8) Actualizar selects (opciones dependientes)
+    // =========================================================
+    function actualizarSelects(datasetFiltrado) {
+      // Portafolio
+      const portafolios = [...new Set(datasetFiltrado.map(r => norm(r.tipoPortafolio)).filter(Boolean))].sort();
+
+      if (filtroPortafolio) {
+        const valorActual = norm(filtros.portafolio);
+        filtroPortafolio.innerHTML = `<option value="">Todos</option>`;
+        portafolios.forEach(p => {
+          const opt = document.createElement("option");
+          opt.value = p;
+          opt.textContent = p;
+          if (p === valorActual) opt.selected = true;
+          filtroPortafolio.appendChild(opt);
+        });
+      }
+
+      // Línea
+      const baseLineas = filtros.portafolio
+        ? datasetFiltrado.filter(r => norm(r.tipoPortafolio) === norm(filtros.portafolio))
+        : datasetFiltrado;
+
+      const lineas = [...new Set(baseLineas.map(r => norm(r.linea)).filter(Boolean))].sort();
+
+      if (filtroLinea) {
+        const valorActual = norm(filtros.linea);
+        filtroLinea.innerHTML = `<option value="">Todas</option>`;
+        lineas.forEach(l => {
+          const opt = document.createElement("option");
+          opt.value = l;
+          opt.textContent = l;
+          if (l === valorActual) opt.selected = true;
+          filtroLinea.appendChild(opt);
+        });
+      }
+
+      // Estado
+      const estados = [...new Set(datasetFiltrado.map(r => norm(r.estado)).filter(Boolean))].sort();
+
+      if (filtroEstado) {
+        const valorActual = norm(filtros.estado);
+        filtroEstado.innerHTML = `<option value="">Todos</option>`;
+        estados.forEach(e => {
+          const opt = document.createElement("option");
+          opt.value = e;
+          opt.textContent = e;
+          if (e === valorActual) opt.selected = true;
+          filtroEstado.appendChild(opt);
+        });
+      }
+
+      // Cuento
+      const cuentos = [...new Set(datasetFiltrado.map(r => norm(r.cuento)).filter(Boolean))].sort();
+
+      if (listaCuentos) {
+        listaCuentos.innerHTML = "";
+        cuentos.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c;
+          listaCuentos.appendChild(opt);
+        });
+      }
+  }
+
+    // =========================================================
+    // 9) Actualizar datalists (categoría / referencia)
+    // =========================================================
+    function actualizarDatalists(datasetFiltrado) {
+      const categorias = [...new Set(datasetFiltrado.map(r => norm(r.categoria)).filter(Boolean))].sort();
+      const refs = [...new Set(datasetFiltrado.map(r => norm(r.referencia)).filter(Boolean))].sort();
+
+      if (listaCategorias) {
+        listaCategorias.innerHTML = "";
+        categorias.forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c;
+          listaCategorias.appendChild(opt);
+        });
+      }
+
+      if (listaReferencias) {
+        listaReferencias.innerHTML = "";
+        refs.forEach(r => {
+          const opt = document.createElement("option");
+          opt.value = r;
+          listaReferencias.appendChild(opt);
+        });
+      }
+    }
+
+    // =========================================================
+    // 10) Render cards (solo página actual)
+    // =========================================================
+
+    function render() {
+      const filtradas = aplicarFiltros();
+
+      totalPages = Math.max(1, Math.ceil(filtradas.length / cardsPerPage));
+      if (currentPage > totalPages) currentPage = 1;
+
+      const visibles = filtradas.slice((currentPage - 1) * cardsPerPage, currentPage * cardsPerPage);
+
+      const cardConfig = { imageResolverUrl, placeholderUrl };
+      cardsContainer.innerHTML = visibles
+        .map(r => window.CardReferencia.crearCardHTML(r, cardConfig))
+        .join("");
+
+
+      if (pageIndicator) pageIndicator.textContent = `Página ${currentPage} de ${totalPages}`;
+      if (prevBtn) prevBtn.disabled = currentPage === 1;
+      if (nextBtn) nextBtn.disabled = currentPage === totalPages;
+
+      actualizarDatalists(filtradas);
+      actualizarSelects(filtradas);
+    }
+
+    // =========================================================
+    // 11) Eventos filtros
+    // =========================================================
+    filtroPortafolio?.addEventListener("change", e => {
+      filtros.portafolio = norm(e.target.value);
+      filtros.linea = "";
+      filtros.categoria = "";
+      filtros.referencia = "";
+      currentPage = 1;
       render();
-    }
-  });
-
-  nextBtn?.addEventListener("click", () => {
-    if (currentPage < totalPages) {
-      currentPage++;
-      render();
-    }
-  });
-
-  document.getElementById("btnExportSegmentaciones")?.addEventListener("click", () => {
-  window.location.href = "/segmentacion/api/export/csv";
-});
-
-  // =========================================================
-  // 13) Doble click (MVP: resolver tallas finales)
-  // =========================================================
-    cardsContainer.addEventListener("dblclick", (event) => {
-    const card = event.target.closest(".reference-card");
-    if (!card) return;
-
-    // 1) Datos del SKU (desde dataset de la card)
-    const referenciaSku = norm(card.dataset.referencia);
-    const lineaRaw = norm(card.dataset.linea);
-    const tallasStr = norm(card.dataset.tallas);
-
-    const descripcion = norm(card.dataset.descripcion);
-    const categoria = norm(card.dataset.categoria);
-    const estado = norm(card.dataset.estado);
-    const tipoPortafolio = norm(card.dataset.portafolio);
-    const precioUnitario = norm(card.dataset.preciounitario);
-    const color = norm(card.dataset.color);
-    const cuento = norm(card.dataset.cuento);
-
-    // Si luego agregas más data-* (codigoBarras, tipoInventario, tallasConteo), lo pasas aquí también.
-    // Para tallasConteo, si no lo tienes en data-*, puedes buscarlo en el array "referencias" por referenciaSku.
-
-    // 2) Normalización y regla tallas
-    const lineaTexto = normalizarLineaTexto(lineaRaw);
-    const tallasFromSku = parseCSVList(tallasStr);
-
-    let tallasFinal = tallasFromSku;
-
-    // Fallback: solo aplica a líneas fijas (las 4 grandes) y si hay default configurado
-    if (tallasFinal.length === 0 && lineaTexto && lineasFijasArray.includes(lineaTexto) && defaultTallasArray.length > 0) {
-      tallasFinal = defaultTallasArray;
-    }
-
-    // 3) Validaciones mínimas antes de abrir modal
-    if (!lineaTexto) {
-      console.warn("Referencia sin línea. No se puede consultar tiendas para el modal.");
-      return;
-    }
-
-    if (tallasFinal.length === 0) {
-      console.warn("Referencia sin tallas y sin fallback aplicable. Revisa configuración o datos del SKU.");
-      return;
-    }
-
-    // 4) Abrir modal (delegamos a detalle.js)
-    console.log("[DOBLECLICK] lineaRaw:", lineaRaw);
-    console.log("[DOBLECLICK] lineaTexto:", lineaTexto);
-
-    if (!window.SegmentacionDetalle || typeof window.SegmentacionDetalle.open !== "function") {
-      console.error("detalle.js no está cargado o no expone SegmentacionDetalle.open()");
-      return;
-    }
-
-    const refObj = referencias.find(r => norm(r.referencia) === referenciaSku);
-    const tallasConteo = refObj?.tallasConteo || null;
-    const codigoBarras = norm(refObj?.codigoBarras || refObj?.codigo_barras || "");
-    // mapa talla -> EAN (CLAVE)
-    const codigosBarrasPorTalla = refObj?.codigosBarrasPorTalla || refObj?.codigos_barras_por_talla || null;
-
-    const tipoInventario = norm(refObj?.tipoInventario || refObj?.tipo_inventario || "");
-
-    fetch("/segmentacion/api/referencias/ack", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ referencia: referenciaSku })
-    }).catch(() => {});
-
-    const dot = card.querySelector(".dot-new");
-    if (dot) dot.remove();
-
-  
-
-    window.SegmentacionDetalle.open({
-      referenciaSku,
-      descripcion,
-      categoria,
-      estado,
-      tipoPortafolio,
-      precioUnitario,
-      lineaRaw,
-      lineaTexto,
-      color,
-      cuento,
-      tallasFinal,
-      tallasConteo,
-      codigoBarras,
-      codigosBarrasPorTalla,
-      tipoInventario
     });
+
+    filtroLinea?.addEventListener("change", e => {
+      filtros.linea = norm(e.target.value);
+      filtros.categoria = "";
+      filtros.referencia = "";
+      currentPage = 1;
+      render();
+    });
+
+    filtroEstado?.addEventListener("change", e => {
+      filtros.estado = norm(e.target.value);
+      currentPage = 1;
+      render();
+    });
+
+    filtroCuento?.addEventListener("input", e => {
+      filtros.cuento = norm(e.target.value);
+      currentPage = 1;
+      render();
+    });
+
+    filtroCategoria?.addEventListener("input", e => {
+      filtros.categoria = norm(e.target.value).toLowerCase();
+      currentPage = 1;
+      render();
+    });
+
+    filtroReferencia?.addEventListener("input", e => {
+      filtros.referencia = norm(e.target.value).toLowerCase();
+      currentPage = 1;
+      render();
+    });
+
+    filtroSoloSegmentadas?.addEventListener("change", e => {
+      filtros.soloSegmentadas = e.target.checked === true;
+      currentPage = 1;
+      render();
+    });
+
+    filtroSoloNoSegmentadas?.addEventListener("change", e => {
+      filtros.soloNoSegmentadas = e.target.checked === true;
+
+      // si activo no segmentadas, apago segmentadas
+      if (filtros.soloNoSegmentadas) {
+        filtros.soloSegmentadas = false;
+        if (filtroSoloSegmentadas) filtroSoloSegmentadas.checked = false;
+      }
+
+      currentPage = 1;
+      render();
+    });
+
+    btnLimpiar?.addEventListener("click", () => {
+      filtros.portafolio = "";
+      filtros.linea = "";
+      filtros.estado = "";
+      filtros.cuento = "";
+      filtros.categoria = "";
+      filtros.referencia = "";
+      filtros.soloSegmentadas = false;
+      filtros.soloNoSegmentadas = false;
+
+      if (filtroPortafolio) filtroPortafolio.value = "";
+      if (filtroLinea) filtroLinea.value = "";
+      if (filtroEstado) filtroEstado.value = "";
+      if (filtroCuento) filtroCuento.value = "";
+      if (filtroCategoria) filtroCategoria.value = "";
+      if (filtroReferencia) filtroReferencia.value = "";
+      if (filtroSoloSegmentadas) filtroSoloSegmentadas.checked = false;
+      if (filtroSoloNoSegmentadas) filtroSoloNoSegmentadas.checked = false;
+
+      currentPage = 1;
+      render();
+    });
+
+    function buildQuery(params) {
+      const usp = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        const value = (v || "").toString().trim();
+        if (value) usp.set(k, value);
+      });
+      return usp.toString();
+    }
+
+    function exportHoyGlobal() {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      const fecha = `${yyyy}-${mm}-${dd}`;
+
+      window.location.href = `/segmentacion/api/export/csv?${buildQuery({ fecha })}`;
+    }
+
+    function exportSesionGlobal() {
+      const desde = pageSessionStartIso;
+      const hasta = new Date().toISOString();
+      window.location.href = `/segmentacion/api/export/csv?${buildQuery({ desde, hasta })}`;
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+    const btnExportAll = document.getElementById("btnExportAllGlobal");
+    if (btnExportAll) {
+      btnExportAll.addEventListener("click", () => {
+        // Exporta TODO lo guardado (Postgres)
+        window.location.href = "/segmentacion/api/segmentaciones/export/excel";
+      });
+    }
+  });
+    
+    // =========================================================
+    // 12) Paginación
+    // =========================================================
+    prevBtn?.addEventListener("click", () => {
+      if (currentPage > 1) {
+        currentPage--;
+        render();
+      }
+    });
+
+    nextBtn?.addEventListener("click", () => {
+      if (currentPage < totalPages) {
+        currentPage++;
+        render();
+      }
+    });
+
+    document.getElementById("btnExportSegmentaciones")?.addEventListener("click", () => {
+    window.location.href = "/segmentacion/api/export/csv";
   });
 
-  // Inicial
-  render();
-});
+    // =========================================================
+    // 13) Doble click (MVP: resolver tallas finales)
+    // =========================================================
+      cardsContainer.addEventListener("dblclick", (event) => {
+      const card = event.target.closest(".reference-card");
+      if (!card) return;
+
+      // 1) Datos del SKU (desde dataset de la card)
+      const referenciaSku = norm(card.dataset.referencia);
+      const lineaRaw = norm(card.dataset.linea);
+      const tallasStr = norm(card.dataset.tallas);
+
+      const descripcion = norm(card.dataset.descripcion);
+      const categoria = norm(card.dataset.categoria);
+      const estado = norm(card.dataset.estado);
+      const tipoPortafolio = norm(card.dataset.portafolio);
+      const precioUnitario = norm(card.dataset.preciounitario);
+      const color = norm(card.dataset.color);
+      const cuento = norm(card.dataset.cuento);
+
+      // Si luego agregas más data-* (codigoBarras, tipoInventario, tallasConteo), lo pasas aquí también.
+      // Para tallasConteo, si no lo tienes en data-*, puedes buscarlo en el array "referencias" por referenciaSku.
+
+      // 2) Normalización y regla tallas
+      const lineaTexto = normalizarLineaTexto(lineaRaw);
+      const tallasFromSku = parseCSVList(tallasStr);
+
+      let tallasFinal = tallasFromSku;
+
+      // Fallback: solo aplica a líneas fijas (las 4 grandes) y si hay default configurado
+      if (tallasFinal.length === 0 && lineaTexto && lineasFijasArray.includes(lineaTexto) && defaultTallasArray.length > 0) {
+        tallasFinal = defaultTallasArray;
+      }
+
+      // 3) Validaciones mínimas antes de abrir modal
+      if (!lineaTexto) {
+        console.warn("Referencia sin línea. No se puede consultar tiendas para el modal.");
+        return;
+      }
+
+      if (tallasFinal.length === 0) {
+        console.warn("Referencia sin tallas y sin fallback aplicable. Revisa configuración o datos del SKU.");
+        return;
+      }
+
+      // 4) Abrir modal (delegamos a detalle.js)
+      console.log("[DOBLECLICK] lineaRaw:", lineaRaw);
+      console.log("[DOBLECLICK] lineaTexto:", lineaTexto);
+
+      if (!window.SegmentacionDetalle || typeof window.SegmentacionDetalle.open !== "function") {
+        console.error("detalle.js no está cargado o no expone SegmentacionDetalle.open()");
+        return;
+      }
+
+      const refObj = referencias.find(r => norm(r.referencia) === referenciaSku);
+      const tallasConteo = refObj?.tallasConteo || null;
+      const codigoBarras = norm(refObj?.codigoBarras || refObj?.codigo_barras || "");
+      const codigosBarrasPorTalla = refObj?.codigosBarrasPorTalla || refObj?.codigos_barras_por_talla || null;
+
+      const tipoInventario = norm(refObj?.tipoInventario || refObj?.tipo_inventario || "");
+
+      const referenciaBase = norm(
+        refObj?.referencia_base ||
+        refObj?.referenciaBase ||
+        refObj?.referenciaSolo ||
+        refObj?.ReferenciaBase ||
+        ""
+      );
+
+      const codigoColor = norm(
+        refObj?.codigo_color ||
+        refObj?.codigoColor ||
+        refObj?.CodigoColor ||
+        ""
+      );
+
+      const perfilPrenda = norm(
+        refObj?.perfil_prenda ||
+        refObj?.perfilPrenda ||
+        refObj?.PerfilPrenda ||
+        ""
+      );
+
+      fetch("/segmentacion/api/referencias/ack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referencia: referenciaSku })
+      }).catch(() => {});
+
+      const dot = card.querySelector(".dot-new");
+      if (dot) dot.remove();
+
+    
+
+      window.SegmentacionDetalle.open({
+        referenciaSku,
+        referenciaBase,
+        codigoColor,
+        color,
+        perfilPrenda,
+
+        descripcion,
+        categoria,
+        estado,
+        tipoPortafolio,
+        precioUnitario,
+        lineaRaw,
+        lineaTexto,
+        cuento,
+        tallasFinal,
+        tallasConteo,
+        codigoBarras,
+        codigosBarrasPorTalla,
+        tipoInventario
+      });
+    });
+
+    // Inicial
+    render();
+  });

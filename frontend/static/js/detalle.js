@@ -31,7 +31,7 @@
   }
 
   function sortTallas(tallas) {
-    const baseOrder = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "3XL"];
+    const baseOrder = ["XS", "S", "M", "L", "XL"];
 
     const arr = Array.isArray(tallas) ? tallas.map(norm).filter(Boolean) : [];
 
@@ -224,13 +224,17 @@
 
     ref: {
       referenciaSku: "",
+      referenciaBase: "",
+      codigoColor: "",
+      color: "",
+      perfilPrenda: "",
+
       descripcion: "",
       categoria: "",
       estado: "",
       tipoPortafolio: "",
       lineaRaw: "",
       lineaTexto: "",
-      color: "",
       cuento: "",
       codigoBarras: "",
       tipoInventario: "",
@@ -609,7 +613,6 @@
   async function cargarMetricas(dom, llaves=[]) {
     const usp = new URLSearchParams();
     usp.set("referenciaSku", state.ref.referenciaSku);
-    if (llaves.length) usp.set("llaves", llaves.join(","));
     const url = `${API_METRICAS}?${usp.toString()}`;
 
     const json = await fetchJson(url);
@@ -775,9 +778,6 @@
   }
 
   function aplicarPresetDesdeSku() {
-    const preset = state.ref.tallasConteo;
-    if (!preset || typeof preset !== "object") return;
-
     state.tiendas.forEach(t => {
       const llave = norm(t.llave_naval);
       if (!llave) return;
@@ -787,14 +787,18 @@
       let anyPositive = false;
 
       state.ref.tallasFinal.forEach(talla => {
-        const keyTalla = norm(talla);
-        const qty = Number(preset[keyTalla] || 0);
+        const keyTalla = norm(talla).toUpperCase();
+        let qty = 1; // default preset
+        if (keyTalla === "M" || keyTalla === "L") {
+          qty = 2;
+        }
         state.cantidades[llave][keyTalla] = qty;
         if (qty > 0) anyPositive = true;
       });
 
       // si el preset asigna algo, activamos la tienda
-      if (anyPositive) state.activoPorTienda[llave] = true;
+      if (anyPositive) {state.activoPorTienda[llave] = true;}
+      
     });
   }
 
@@ -831,9 +835,13 @@
   function buildPayloadGuardar() {
     const payload = {
       referenciaSku: state.ref.referenciaSku,
+      referencia: state.ref.referenciaBase,
+      codigoColor: state.ref.codigoColor,
+      color: state.ref.color,
+      perfilPrenda: state.ref.perfilPrenda,
       descripcion: state.ref.descripcion,
       categoria: state.ref.categoria,
-      linea: state.ref.lineaRaw,               
+      linea: state.ref.lineaRaw,
       tipo_portafolio: state.ref.tipoPortafolio,
       precio_unitario: toNumberOrZero(state.ref.precioUnitario),
       estado_sku: state.ref.estado,
@@ -841,7 +849,6 @@
       codigo_barras: state.ref.codigoBarras,
       codigosBarrasPorTalla: state.ref.codigosBarrasPorTalla,
       tipo_inventario: state.ref.tipoInventario,
-      color: state.ref.color,
       id_segmentacion: state.metricas.idSegmentacionActual || null,
     };
 
@@ -905,6 +912,26 @@
     state.sessionStartIso = isoNow();
 
     state.ref.referenciaSku = norm(payload.referenciaSku);
+
+    state.ref.referenciaBase = norm(
+      payload.referenciaBase ||
+      payload.referencia_base ||
+      payload.referencia ||
+      ""
+    );
+
+    state.ref.codigoColor = norm(
+      payload.codigoColor ||
+      payload.codigo_color ||
+      payload.CodigoColor ||
+      ""
+    );
+    state.ref.perfilPrenda = norm(
+      payload.perfilPrenda ||
+      payload.perfil_prenda ||
+      payload.PerfilPrenda ||
+      ""
+    );
     state.ref.descripcion = norm(payload.descripcion);
     state.ref.categoria = norm(payload.categoria);
     state.ref.estado = norm(payload.estado);
@@ -1131,7 +1158,6 @@
 
         try {
             await cargarTiendas(dom); // Recargar tiendas sin filtros
-            await cargarMetricas(dom); // Cargar métricas
             renderTiendas(dom); // Renderizar las tiendas
         } catch (err) {
             setError(dom, err?.message || "Error al limpiar filtros.");

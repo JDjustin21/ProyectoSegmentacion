@@ -1,3 +1,5 @@
+#backend/tools/ingestion/inventario_job.py
+
 import os
 import math
 import json
@@ -13,33 +15,22 @@ from psycopg2.extras import execute_values
 
 def setup_logger(job_name: str = "inventario_job") -> logging.Logger:
     """
-    Logs a: backend/logs/<job_name>_YYYYMMDD.log
-    y también a consola.
+    Logger solo a consola.
+    El .bat redirige stdout/stderr al archivo log único del job.
     """
-    backend_dir = Path(__file__).resolve().parents[2]  # Ajuste para resolver la ruta correctamente
-    logs_dir = backend_dir / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-
-    log_file = logs_dir / f"{job_name}_{datetime.now().strftime('%Y%m%d')}.log"
-
     logger = logging.getLogger(job_name)
     logger.setLevel(logging.INFO)
 
-    # Evitar handlers duplicados si se ejecuta en la misma sesión
     if logger.handlers:
-        return logger
+        logger.handlers.clear()
 
     fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setFormatter(fmt)
-    logger.addHandler(fh)
 
     sh = logging.StreamHandler()
     sh.setFormatter(fmt)
     logger.addHandler(sh)
 
-    logger.info(f"Logger iniciado. Archivo: {log_file}")
+    logger.info("Logger iniciado en consola/stdout.")
     return logger
 
 
