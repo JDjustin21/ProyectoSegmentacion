@@ -37,22 +37,95 @@
     // =========================================================
     // 2) Dataset JSON embebido (fuente de verdad para cards)
     // =========================================================
-    const dataScript = document.getElementById("data-referencias");
-    if (!dataScript) {
-      throw new Error("No se encontró #data-referencias con el JSON de referencias");
+    const referenciasApiUrl = (cardsContainer?.dataset.referenciasApiUrl || "").trim();
+    if (!referenciasApiUrl) {
+      throw new Error("Falta configuración: data-referencias-api-url en #cards-container");
     }
 
+    const referenciasDetalleApiUrl = `${referenciasApiUrl.replace(/\/$/, "")}/detalle`;
+
     let referencias = [];
-    try {
-      referencias = JSON.parse(dataScript.textContent || "[]");
-    } catch {
-      throw new Error("JSON inválido en #data-referencias");
+    const referenciasByRef = new Map();
+    const detalleByRef = new Map();
+
+    async function cargarReferencias() {
+      cardsContainer.innerHTML = `
+        <div class="alert alert-light text-center w-100">
+          Cargando referencias...
+        </div>
+      `;
+
+      const res = await fetch(referenciasApiUrl, {
+        headers: { "Accept": "application/json" }
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Error cargando referencias: HTTP ${res.status} - ${text}`);
+      }
+
+      const json = await res.json();
+      if (!json.ok) {
+        throw new Error(json.error || "No fue posible cargar referencias.");
+      }
+
+      referencias = Array.isArray(json.data) ? json.data : [];
+      rebuildReferenciasIndex();
+    }
+
+    function rebuildReferenciasIndex() {
+      referenciasByRef.clear();
+
+      referencias.forEach((r) => {
+        const key = norm(r?.referencia);
+        if (key) {
+          referenciasByRef.set(key, r);
+        }
+      });
+    }
+
+    function getReferenciaResumen(referenciaSku) {
+      return referenciasByRef.get(norm(referenciaSku)) || null;
+    }
+
+    async function obtenerDetalleReferencia(referenciaSku) {
+      const ref = norm(referenciaSku);
+      if (!ref) {
+        throw new Error("Referencia inválida para consultar detalle.");
+      }
+
+      if (detalleByRef.has(ref)) {
+        return detalleByRef.get(ref);
+      }
+
+      const url = new URL(referenciasDetalleApiUrl, window.location.origin);
+      url.searchParams.set("referenciaSku", ref);
+
+      const res = await fetch(url.toString(), {
+        headers: { "Accept": "application/json" }
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Error cargando detalle: HTTP ${res.status} - ${text}`);
+      }
+
+      const json = await res.json();
+      if (!json.ok) {
+        throw new Error(json.error || "No fue posible cargar el detalle de la referencia.");
+      }
+
+      const data = json.data || null;
+      if (!data) {
+        throw new Error("El backend no devolvió detalle para la referencia.");
+      }
+
+      detalleByRef.set(ref, data);
+      return data;
     }
 
     function setReferenciaSegmentadaYConteo(referenciaSku, isSegmented, tiendasActivasSegmentadas) {
-      const refKey = norm(referenciaSku);
-
-      const obj = referencias.find(r => norm(r.referencia) === refKey);
+      const obj = getReferenciaResumen(referenciaSku);
       if (!obj) return;
 
       const flag = isSegmented === true;
@@ -132,8 +205,14 @@
     // "S, M, L" -> ["S","M","L"]
     // "10, 12, 14" -> ["10","12","14"]
     // "12/18, 18/24" -> ["12/18","18/24"]
-    function parseCSVList(str) {
-      return (str || "")
+    function parseCSVList(value) {
+      if (Array.isArray(value)) {
+        return value
+          .map(x => norm(x))
+          .filter(Boolean);
+      }
+
+      return (value || "")
         .split(",")
         .map(x => x.trim())
         .filter(Boolean);
@@ -515,120 +594,144 @@
     // =========================================================
     // 13) Doble click (MVP: resolver tallas finales)
     // =========================================================
-      cardsContainer.addEventListener("dblclick", (event) => {
+      cardsContainer.addEventListener("dblclick", async (event) => {
       const card = event.target.closest(".reference-card");
-      if (!card) return;
+        if (!card) return;
 
-      // 1) Datos del SKU (desde dataset de la card)
-      const referenciaSku = norm(card.dataset.referencia);
-      const lineaRaw = norm(card.dataset.linea);
-      const tallasStr = norm(card.dataset.tallas);
+        const referenciaSku = norm(card.dataset.referencia);
+        if (!referenciaSku) {
+          console.warn("La card no tiene referencia.");
+          return;
+        }
 
-      const descripcion = norm(card.dataset.descripcion);
-      const categoria = norm(card.dataset.categoria);
-      const estado = norm(card.dataset.estado);
-      const tipoPortafolio = norm(card.dataset.portafolio);
-      const precioUnitario = norm(card.dataset.preciounitario);
-      const color = norm(card.dataset.color);
-      const cuento = norm(card.dataset.cuento);
+        if (!window.SegmentacionDetalle || typeof window.SegmentacionDetalle.open !== "function") {
+          console.error("detalle.js no está cargado o no expone SegmentacionDetalle.open()");
+          return;
+        }
 
-      // Si luego agregas más data-* (codigoBarras, tipoInventario, tallasConteo), lo pasas aquí también.
-      // Para tallasConteo, si no lo tienes en data-*, puedes buscarlo en el array "referencias" por referenciaSku.
+        const resumen = getReferenciaResumen(referenciaSku);
+        if (!resumen) {
+          console.warn("No se encontró el resumen de la referencia en memoria:", referenciaSku);
+          return;
+        }
 
-      // 2) Normalización y regla tallas
-      const lineaTexto = normalizarLineaTexto(lineaRaw);
-      const tallasFromSku = parseCSVList(tallasStr);
+        // Datos livianos del resumen
+        const descripcion = norm(resumen.descripcion);
+        const categoria = norm(resumen.categoria);
+        const estado = norm(resumen.estado);
+        const tipoPortafolio = norm(resumen.tipoPortafolio);
+        const precioUnitario = norm(resumen.precioUnitario);
+        const color = norm(resumen.color);
+        const cuento = norm(resumen.cuento);
 
-      let tallasFinal = tallasFromSku;
+        let detalle = null;
 
-      // Fallback: solo aplica a líneas fijas (las 4 grandes) y si hay default configurado
-      if (tallasFinal.length === 0 && lineaTexto && lineasFijasArray.includes(lineaTexto) && defaultTallasArray.length > 0) {
-        tallasFinal = defaultTallasArray;
-      }
+        try {
+          detalle = await obtenerDetalleReferencia(referenciaSku);
+        } catch (err) {
+          console.error(err);
+          alert(`No fue posible cargar el detalle de la referencia ${referenciaSku}.`);
+          return;
+        }
 
-      // 3) Validaciones mínimas antes de abrir modal
-      if (!lineaTexto) {
-        console.warn("Referencia sin línea. No se puede consultar tiendas para el modal.");
-        return;
-      }
+        const lineaRaw = norm(detalle?.linea || resumen.linea);
+        const lineaTexto = normalizarLineaTexto(lineaRaw);
 
-      if (tallasFinal.length === 0) {
-        console.warn("Referencia sin tallas y sin fallback aplicable. Revisa configuración o datos del SKU.");
-        return;
-      }
+        const tallasFromSku = parseCSVList(detalle?.tallas);
+        let tallasFinal = tallasFromSku;
 
-      // 4) Abrir modal (delegamos a detalle.js)
-      console.log("[DOBLECLICK] lineaRaw:", lineaRaw);
-      console.log("[DOBLECLICK] lineaTexto:", lineaTexto);
+        if (
+          tallasFinal.length === 0 &&
+          lineaTexto &&
+          lineasFijasArray.includes(lineaTexto) &&
+          defaultTallasArray.length > 0
+        ) {
+          tallasFinal = defaultTallasArray;
+        }
 
-      if (!window.SegmentacionDetalle || typeof window.SegmentacionDetalle.open !== "function") {
-        console.error("detalle.js no está cargado o no expone SegmentacionDetalle.open()");
-        return;
-      }
+        if (!lineaTexto) {
+          console.warn("Referencia sin línea. No se puede consultar tiendas para el modal.");
+          return;
+        }
 
-      const refObj = referencias.find(r => norm(r.referencia) === referenciaSku);
-      const tallasConteo = refObj?.tallasConteo || null;
-      const codigoBarras = norm(refObj?.codigoBarras || refObj?.codigo_barras || "");
-      const codigosBarrasPorTalla = refObj?.codigosBarrasPorTalla || refObj?.codigos_barras_por_talla || null;
+        if (tallasFinal.length === 0) {
+          console.warn("Referencia sin tallas y sin fallback aplicable. Revisa configuración o datos del SKU.");
+          return;
+        }
 
-      const tipoInventario = norm(refObj?.tipoInventario || refObj?.tipo_inventario || "");
+        const tallasConteo = detalle?.tallasConteo || null;
+        const codigoBarras = norm(detalle?.codigoBarras || detalle?.codigo_barras || "");
+        const codigosBarrasPorTalla =
+          detalle?.codigosBarrasPorTalla ||
+          detalle?.codigos_barras_por_talla ||
+          null;
 
-      const referenciaBase = norm(
-        refObj?.referencia_base ||
-        refObj?.referenciaBase ||
-        refObj?.referenciaSolo ||
-        refObj?.ReferenciaBase ||
-        ""
-      );
+        const tipoInventario = norm(detalle?.tipoInventario || detalle?.tipo_inventario || "");
 
-      const codigoColor = norm(
-        refObj?.codigo_color ||
-        refObj?.codigoColor ||
-        refObj?.CodigoColor ||
-        ""
-      );
+        const referenciaBase = norm(
+          detalle?.referenciaBase ||
+          detalle?.referencia_base ||
+          ""
+        );
 
-      const perfilPrenda = norm(
-        refObj?.perfil_prenda ||
-        refObj?.perfilPrenda ||
-        refObj?.PerfilPrenda ||
-        ""
-      );
+        const codigoColor = norm(
+          detalle?.codigoColor ||
+          detalle?.codigo_color ||
+          ""
+        );
 
-      fetch("/segmentacion/api/referencias/ack", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ referencia: referenciaSku })
-      }).catch(() => {});
+        const perfilPrenda = norm(
+          detalle?.perfilPrenda ||
+          detalle?.perfil_prenda ||
+          ""
+        );
 
-      const dot = card.querySelector(".dot-new");
-      if (dot) dot.remove();
+        fetch("/segmentacion/api/referencias/ack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ referencia: referenciaSku })
+        }).catch(() => {});
 
-    
+        const dot = card.querySelector(".dot-new");
+        if (dot) dot.remove();
 
-      window.SegmentacionDetalle.open({
-        referenciaSku,
-        referenciaBase,
-        codigoColor,
-        color,
-        perfilPrenda,
+        window.SegmentacionDetalle.open({
+          referenciaSku,
+          referenciaBase,
+          codigoColor,
+          color,
+          perfilPrenda,
 
-        descripcion,
-        categoria,
-        estado,
-        tipoPortafolio,
-        precioUnitario,
-        lineaRaw,
-        lineaTexto,
-        cuento,
-        tallasFinal,
-        tallasConteo,
-        codigoBarras,
-        codigosBarrasPorTalla,
-        tipoInventario
+          descripcion,
+          categoria,
+          estado,
+          tipoPortafolio,
+          precioUnitario,
+          lineaRaw,
+          lineaTexto,
+          cuento,
+          tallasFinal,
+          tallasConteo,
+          codigoBarras,
+          codigosBarrasPorTalla,
+          tipoInventario
+        });
       });
-    });
+
+    async function init() {
+      try {
+        await cargarReferencias();
+        render();
+      } catch (err) {
+        console.error(err);
+        cardsContainer.innerHTML = `
+          <div class="alert alert-danger w-100">
+            No fue posible cargar las referencias. ${err?.message || ""}
+          </div>
+        `;
+      }
+    }
 
     // Inicial
-    render();
+    init();
   });

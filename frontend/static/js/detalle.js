@@ -21,7 +21,6 @@
   const API_ULTIMA = "/segmentacion/api/segmentaciones/ultima";
   const API_GUARDAR = "/segmentacion/api/segmentaciones";
   const API_METRICAS = "/segmentacion/api/metricas";
-  const API_PART_LINEA = "/segmentacion/api/metricas/participacion-linea";
 
   // =========================
   // 2) Helpers puros
@@ -247,6 +246,7 @@
     tiendas: [],
     cantidades: {},
     activoPorTienda: {},
+    renderSeq: 0,
   };
 
   // =========================
@@ -318,6 +318,151 @@
     return Number.isFinite(n) ? n : 1;
   }
 
+  function getRenderChunkSize(dom) {
+    const raw = dom?.modalEl?.dataset?.renderChunkSize;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : 20;
+  }
+
+  function nextPaint(fn) {
+    window.requestAnimationFrame(fn);
+  }
+
+  function buildTiendaRowHtml(t, ctx) {
+    const {
+      tallas,
+      decimals,
+      totalVentaProm,
+      resumenByLlave,
+      detalleByLlaveTalla,
+      existenciaByLlaveTalla,
+      partLineaByLlave,
+    } = ctx;
+
+    const llave = norm(t.llave_naval);
+    const nombreTienda = norm(t.desc_dependencia) || norm(t.dependencia);
+    const ciudad = norm(t.ciudad);
+    const clima = norm(t.clima);
+    const zona = norm(t.zona);
+
+    const rankinLinea = norm(t.rankin_linea || "");
+    const testeoFnl = norm(t.testeo || t.testeo_fnl || "");
+
+    const resumen = resumenByLlave[llave] || null;
+    const cpdTienda = resumen ? fmtFixed(resumen.cpd_total, decimals) : "—";
+    const ventaPromTienda = resumen ? fmtFixed(resumen.venta_promedio_mensual_total, decimals) : "—";
+
+    const rotacionTienda =
+      resumen?.rotacion_tienda != null
+        ? (resumen.rotacion_tienda * 100).toFixed(decimals) + "%"
+        : "—";
+
+    const ventaPromNum = ventaPromedioTienda(resumen);
+    const partVentaProm = totalVentaProm > 0 ? (ventaPromNum / totalVentaProm) : null;
+    const partVentaPromTxt =
+      partVentaProm !== null
+        ? (partVentaProm * 100).toFixed(decimals) + "%"
+        : "—";
+
+    const partLinea = partLineaByLlave[llave] || null;
+    const partLineaNum = toNumberOrNull(partLinea?.participacion_venta_linea);
+    const partLineaTxt =
+      partLineaNum !== null
+        ? (partLineaNum * 100).toFixed(decimals) + "%"
+        : "—";
+
+    if (!state.cantidades[llave]) state.cantidades[llave] = {};
+
+    const isActive = isStoreActive(llave);
+    const detalleTienda = detalleByLlaveTalla[llave] || {};
+    const existenciaTienda = existenciaByLlaveTalla[llave] || {};
+
+    const tallasHtml = tallas.map(talla => {
+      const keyTalla = norm(talla).toUpperCase();
+      const qty = Number(state.cantidades[llave][keyTalla] || 0);
+
+      const rows = detalleTienda[keyTalla] || [];
+      const row0 = rows[0] || null;
+
+      const cpdTalla = row0 ? fmtFixed(row0.cpd, decimals) : "—";
+
+      const rotVal =
+        row0 && row0.rotacion_talla != null
+          ? toNumberOrNull(row0.rotacion_talla)
+          : null;
+
+      const rotacionTalla =
+        rotVal !== null
+          ? (rotVal * 100).toFixed(decimals) + "%"
+          : "—";
+
+      const existenciaTalla =
+        existenciaTienda[keyTalla] !== undefined
+          ? fmtFixed(existenciaTienda[keyTalla], 0)
+          : "—";
+
+      const disabledClass = isActive ? "" : "is-disabled";
+
+      return `
+        <div class="detalle-talla-col ${disabledClass}">
+          <div class="detalle-talla-label">${keyTalla}</div>
+
+          <input
+            type="number"
+            min="0"
+            step="1"
+            class="form-control form-control-sm detalle-qty-box"
+            value="${qty}"
+            data-llave="${llave}"
+            data-talla="${keyTalla}"
+            ${isActive ? "" : "disabled"}
+          />
+          <div class="detalle-metricas-talla">
+            <div class="small">CPD: ${cpdTalla}</div>
+            <div class="small">Rot: ${rotacionTalla}</div>
+            <div class="small">Exist: ${existenciaTalla}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="detalle-row-5">
+        <div class="detalle-col">
+          <div class="dep">${nombreTienda}</div>
+          <div class="meta">${ciudad} / ${zona} / ${clima}</div>
+          <div class="small">Testeo: ${testeoFnl || "—"}</div>
+          <div class="small">Part.Venta (Línea): ${partLineaTxt}</div>
+        </div>
+
+        <div class="detalle-col">
+          <span class="perfil-badge ${perfilClass(rankinLinea)}">
+            ${(rankinLinea || "NA").toUpperCase()}
+          </span>
+        </div>
+
+        <div class="detalle-col detalle-col-activo">
+          <div class="active-toggle ${isActive ? "active" : ""}"
+              data-llave="${llave}"
+              title="${isActive ? "Activo" : "Inactivo"}"></div>
+        </div>
+
+        <div class="detalle-col tallas">
+          <div class="detalle-tallas">
+            ${tallasHtml}
+          </div>
+        </div>
+
+        <div class="detalle-col">
+          <div class="small">Venta Promedio: ${ventaPromTienda}</div>
+          <div class="small">Part.Venta (Ref): ${partVentaPromTxt}</div>
+          <div class="small">CPD tienda: ${cpdTienda}</div>
+          <div class="small">Rot. total: ${rotacionTienda}</div>
+        </div>
+      </div>
+    `;
+  }
+
   function fmtFixed(v, decimals, empty = "—") {
     if (v === null || v === undefined) return empty;
     const n = Number((v ?? "").toString().replace(",", ".").trim());
@@ -373,46 +518,60 @@
   // 6) Render: tiendas + tallas
   // =========================
   function renderTiendas(dom) {
-    console.time("[DETALLE] renderTiendas")
-    const tallas = Array.isArray(state.ref.tallasFinal) ? state.ref.tallasFinal : [];
-    dom.tiendasContainer.innerHTML = "";
+    console.time("[DETALLE] renderTiendas");
 
+    const renderSeq = ++state.renderSeq;
+
+    const tallas = Array.isArray(state.ref.tallasFinal) ? state.ref.tallasFinal : [];
     const tiendasRaw = Array.isArray(state.tiendas) ? state.tiendas : [];
-    
+
+    const partLineaByLlave = state.metricas?.partLineaByLlave || {};
+    const resumenByLlave = state.metricas?.resumenByLlave || {};
+    const detalleByLlaveTalla = state.metricas?.detalleByLlaveTalla || {};
+    const existenciaByLlaveTalla = state.metricas?.existenciaByLlaveTalla || {};
+
     const tiendas = [...tiendasRaw].sort((a, b) => {
       const la = norm(a.llave_naval);
       const lb = norm(b.llave_naval);
 
-      const pa = partVentaLinea(la);
-      const pb = partVentaLinea(lb);
+      const pa = toNumberOrNull(partLineaByLlave[la]?.participacion_venta_linea);
+      const pb = toNumberOrNull(partLineaByLlave[lb]?.participacion_venta_linea);
 
-      const aHas = (pa !== null && Number.isFinite(pa));
-      const bHas = (pb !== null && Number.isFinite(pb));
+      const aHas = pa !== null && Number.isFinite(pa);
+      const bHas = pb !== null && Number.isFinite(pb);
 
-      if (aHas && bHas) {
-        if (pb !== pa) return pb - pa; // desc
-      } else if (aHas && !bHas) {
-        return -1; // a primero
-      } else if (!aHas && bHas) {
-        return 1; // b primero
-      }
+      if (aHas && bHas && pb !== pa) return pb - pa;
+      if (aHas && !bHas) return -1;
+      if (!aHas && bHas) return 1;
 
-      // Tie-breaker estable
       const na = norm(a.desc_dependencia) || norm(a.dependencia);
       const nb = norm(b.desc_dependencia) || norm(b.dependencia);
       return na.localeCompare(nb);
     });
-    
+
     if (tiendas.length === 0) {
       dom.tiendasContainer.innerHTML = `
         <div class="alert alert-warning mb-0">
           No se encontraron tiendas activas para esta línea (o con los filtros actuales).
         </div>
       `;
+      updateFooterStats(dom);
+      console.timeEnd("[DETALLE] renderTiendas");
       return;
     }
 
+    const decimals = getMetricsDecimals(dom);
     const totalVentaProm = totalVentaPromedioTiendasFiltradas();
+
+    const ctx = {
+      tallas,
+      decimals,
+      totalVentaProm,
+      resumenByLlave,
+      detalleByLlaveTalla,
+      existenciaByLlaveTalla,
+      partLineaByLlave,
+    };
 
     const headerHtml = `
       <div class="detalle-row-5 detalle-row-head">
@@ -424,138 +583,32 @@
       </div>
     `;
 
-    const html = tiendas.map(t => {
-      const llave = norm(t.llave_naval);
-      const nombreTienda = norm(t.desc_dependencia) || norm(t.dependencia);
-      const ciudad = norm(t.ciudad);
-      const clima = norm(t.clima);
-      const zona = norm(t.zona);
-
-      const rankinLinea = norm(t.rankin_linea || "");
-      const testeoFnl = norm(t.testeo || t.testeo_fnl || "");
-
-      const decimals = getMetricsDecimals(dom);
-
-      const resumen = state.metricas?.resumenByLlave?.[llave] || null;
-      const cpdTienda = resumen ? fmtFixed(resumen.cpd_total, decimals) : "—";
-      const ventaPromTienda = resumen ? fmtFixed(resumen.venta_promedio_mensual_total, decimals) : "—";
-      const rotacionTienda = resumen?.rotacion_tienda != null
-            ? (resumen.rotacion_tienda * 100).toFixed(decimals) + '%'
-            : "—";
-      const ventaPromNum = ventaPromedioTienda(resumen);
-      const partVentaProm = (totalVentaProm > 0) ? (ventaPromNum / totalVentaProm) : null;
-
-      const partVentaPromTxt = (partVentaProm !== null)
-        ? (partVentaProm * 100).toFixed(decimals) + "%"
-        : "—";
-
-      const partLinea = state.metricas?.partLineaByLlave?.[llave] || null;
-      const partLineaNum = toNumberOrNull(partLinea?.participacion_venta_linea);
-      const partLineaTxt = (partLineaNum !== null)
-        ? (partLineaNum * 100).toFixed(decimals) + "%"
-        : "—";
-
-      if (!state.cantidades[llave]) state.cantidades[llave] = {};
-
-      const isActive = isStoreActive(llave);
-
-      const tallasHtml = tallas.map(talla => {
-        const keyTalla = norm(talla);
-        const qty = Number(state.cantidades[llave][keyTalla] || 0);
-
-        const tallaUp = keyTalla.toUpperCase();
-        const rows = state.metricas?.detalleByLlaveTalla?.[llave]?.[tallaUp] || [];
-        const row0 = rows[0] || null; // normalmente 1 fila por talla+ean
-
-
-        const ean = row0 ? norm(row0.ean) : "";
-        const cpdTalla = row0 ? fmtFixed(row0.cpd, decimals) : "—";
-        const rotMap = state.metricas?.rotacionByLlaveTalla?.[llave] || {};
-        const rotVal =
-          (row0 && row0.rotacion_talla != null)
-            ? toNumberOrNull(row0.rotacion_talla)
-            : (rotMap[tallaUp] !== undefined ? toNumberOrNull(rotMap[tallaUp]) : null);
-
-        const rotacionTalla = (rotVal !== null)
-          ? (rotVal * 100).toFixed(decimals) + '%'
-          : "—";
-        const existMap = state.metricas?.existenciaByLlaveTalla?.[llave] || {};
-        const existenciaTalla = (existMap[tallaUp] !== undefined)
-          ? fmtFixed(existMap[tallaUp], 0)
-          : "—";
-
-        const disabledAttr = isActive ? "" : "disabled";
-        const disabledClass = isActive ? "" : "is-disabled";
-
-        return `
-          <div class="detalle-talla-col ${disabledClass}">
-            <div class="detalle-talla-label">${keyTalla}</div>
-
-            <input
-              type="number"
-              min="0"
-              step="1"
-              class="form-control form-control-sm detalle-qty-box"
-              value="${qty}"
-              data-llave="${llave}"
-              data-talla="${keyTalla}"
-              ${isActive ? "" : "disabled"}
-            />
-            <div class="detalle-metricas-talla">
-              <div class="small">CPD: ${cpdTalla}</div>
-              <div class="small">Rot: ${rotacionTalla}</div>
-              <div class="small">Exist: ${existenciaTalla}</div>
-            </div>
-          </div>
-        `;
-
-      }).join("");
-
-      return `
-        <div class="detalle-row-5">
-          <!-- 1) Tienda -->
-          <div class="detalle-col">
-            <div class="dep">${nombreTienda}</div>
-            <div class="meta">${ciudad} / ${zona} / ${clima}</div>
-            <div class="small">Testeo: ${testeoFnl || "—"}</div>
-            <div class="small">Part.Venta (Línea): ${partLineaTxt}</div>
-          </div>
-
-          <!-- 2) Rankin -->
-          <div class="detalle-col">
-            <span class="perfil-badge ${perfilClass(rankinLinea)}">
-              ${(rankinLinea || "NA").toUpperCase()}
-            </span>
-          </div>
-
-          <!-- 3) Activo -->
-          <div class="detalle-col detalle-col-activo">
-            <div class="active-toggle ${isActive ? "active" : ""}"
-                data-llave="${llave}"
-                title="${isActive ? "Activo" : "Inactivo"}"></div>
-          </div>
-
-          <!-- 4) Tallas -->
-          <div class="detalle-col tallas">
-            <div class="detalle-tallas">
-              ${tallasHtml}
-            </div>
-          </div>
-
-          <!-- 5) Métricas tienda -->
-          <div class="detalle-col">
-            <div class="small">Venta Promedio: ${ventaPromTienda}</div>
-            <div class="small">Part.Venta (Ref): ${partVentaPromTxt}</div>
-            <div class="small">CPD tienda: ${cpdTienda}</div>
-            <div class="small">Rot. total: ${rotacionTienda}</div>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    dom.tiendasContainer.innerHTML = headerHtml + html;
+    dom.tiendasContainer.innerHTML = headerHtml;
     updateFooterStats(dom);
-    console.timeEnd("[DETALLE] renderTiendas");
+
+    const chunkSize = getRenderChunkSize(dom);
+    let index = 0;
+
+    function appendChunk() {
+      if (renderSeq !== state.renderSeq) return;
+
+      const end = Math.min(index + chunkSize, tiendas.length);
+      let html = "";
+
+      for (; index < end; index++) {
+        html += buildTiendaRowHtml(tiendas[index], ctx);
+      }
+
+      dom.tiendasContainer.insertAdjacentHTML("beforeend", html);
+
+      if (index < tiendas.length) {
+        nextPaint(appendChunk);
+      } else {
+        console.timeEnd("[DETALLE] renderTiendas");
+      }
+    }
+
+    appendChunk();
   }
 
   // =========================
@@ -599,23 +652,29 @@
     console.time("[DETALLE] tiendas fetch");
     const json = await fetchJson(url);
     console.timeEnd("[DETALLE] tiendas fetch");
-    if (!json.ok) throw new Error(json.error || "Error consultando tiendas activas");
+
+    if (!json.ok) {
+      throw new Error(json.error || "Error consultando tiendas activas");
+    }
 
     state.tiendas = extractListDeep(json.data);
-    const llaves = state.tiendas
-    .map(t => norm(t.llave_naval))
-    .filter(Boolean);
     updateModalDatalists(dom, state.tiendas);
-
-    await cargarMetricas(dom, llaves);
   }
 
-  async function cargarMetricas(dom, llaves=[]) {
+  async function cargarMetricas(dom) {
     const usp = new URLSearchParams();
     usp.set("referenciaSku", state.ref.referenciaSku);
+
+    const lineaParaConsulta = norm(state.ref.lineaTexto) || norm(state.ref.lineaRaw);
+    if (lineaParaConsulta) {
+      usp.set("linea", lineaParaConsulta);
+    }
+
     const url = `${API_METRICAS}?${usp.toString()}`;
 
+    console.time("[DETALLE] metricas fetch");
     const json = await fetchJson(url);
+    console.timeEnd("[DETALLE] metricas fetch");
 
     if (!json.ok) throw new Error(json.error || "Error consultando métricas");
 
@@ -623,6 +682,11 @@
     const resumen = Array.isArray(data.resumenPorTienda) ? data.resumenPorTienda : [];
     const detalle = Array.isArray(data.detallePorTalla) ? data.detallePorTalla : [];
     const existenciaArr = Array.isArray(data.existenciaPorTalla) ? data.existenciaPorTalla : [];
+    const participacionLineaArr = Array.isArray(data.participacionLineaPorTienda)
+      ? data.participacionLineaPorTienda
+      : [];
+
+    console.time("[DETALLE] metricas parse/map");
 
     // =========================
     // Existencia por talla (independiente)
@@ -686,44 +750,27 @@
     // =========================
     // Participación por línea
     // =========================
-    const lineaParaPart = norm(state.ref.lineaTexto) || norm(state.ref.lineaRaw);
-    const depFiltro = norm(dom.filtroDependencia?.value);
+    const partLineaByLlave = {};
+    participacionLineaArr.forEach(r => {
+      const llave = norm(r.llave_naval);
+      if (!llave) return;
 
-    console.time("[DETALLE] metricas fetch")
-    let partLineaByLlave = {};
-    if (lineaParaPart) {
-      try {
-        const q2 = buildQuery({ linea: lineaParaPart, dependencia: depFiltro });
-        const url2 = `${API_PART_LINEA}?${q2}`;
-        const json2 = await fetchJson(url2);
+      partLineaByLlave[llave] = {
+        participacion_venta_linea: toNumberOrNull(r.participacion_venta_linea),
+        venta_promedio_mensual_linea_tienda: toNumberOrNull(r.venta_promedio_mensual_linea_tienda),
+        venta_promedio_mensual_linea_cliente: toNumberOrNull(r.venta_promedio_mensual_linea_cliente),
+      };
+    });
 
-        if (json2.ok) {
-          const arr = Array.isArray(json2.data) ? json2.data : [];
-          console.time("[DETALLE] metricas parse/map")
-          arr.forEach(r => {
-            const llave = norm(r.llave_naval);
-            if (!llave) return;
-            partLineaByLlave[llave] = {
-              participacion_venta_linea: toNumberOrNull(r.participacion_venta_linea),
-              venta_promedio_mensual_linea_tienda: toNumberOrNull(r.venta_promedio_mensual_linea_tienda),
-              venta_promedio_mensual_linea_cliente: toNumberOrNull(r.venta_promedio_mensual_linea_cliente),
-            };
-          });
-        }
-      } catch (e) {
-        console.warn("[DETALLE] Error cargando participación por línea:", e?.message || e);
-      }
-    }
-    // Guardamos en state
     state.metricas = {
       resumenByLlave,
       detalleByLlaveTalla,
       partLineaByLlave,
       existenciaByLlaveTalla,
-      idSegmentacionActual: null,
+      idSegmentacionActual: state.metricas?.idSegmentacionActual || null,
     };
 
-    console.timeEnd("[DETALLE] metricas parse/map")
+    console.timeEnd("[DETALLE] metricas parse/map");
     calcularYActualizarMetricas(dom);
   }
   // =========================
@@ -747,7 +794,11 @@
       const talla = norm(d.talla);
       const cantidad = Number(d.cantidad || 0);
       const estadoDetalle = norm(d.estado_detalle || d.estadoDetalle || "Activo").toLowerCase();
-      state.idSegmentacionActual = seg.id_segmentacion || seg.idSegmentacion || seg.id_segmentacion_actual || null;
+      state.metricas.idSegmentacionActual =
+        seg.id_segmentacion ||
+        seg.idSegmentacion ||
+        seg.id_segmentacion_actual ||
+        null;
 
       if (!llave || !talla) return;
       if (!state.cantidades[llave]) state.cantidades[llave] = {};
@@ -1014,14 +1065,14 @@
       // Importante: al abrir, dejamos filtros en blanco (coherencia)
       limpiarFiltros(dom);
 
-      // 1) Cargar tiendas (sin filtros)
-      await cargarTiendas(dom);
+      await Promise.all([
+        cargarTiendas(dom),
+        cargarMetricas(dom),
+        cargarUltimaSegmentacion(),
+      ]);
 
-      // 2) Cargar última segmentación
-      await cargarUltimaSegmentacion();
-
-      // 4) render
       renderTiendas(dom);
+      calcularYActualizarMetricas(dom);
 
       // 5) actualizar métricas en header (CPD total, venta total)
 
@@ -1062,20 +1113,15 @@
     setLoading(dom, true);
 
     try {
-        // Llamar a la API para cargar las tiendas filtradas
-        await cargarTiendas(dom); // Primero cargamos las tiendas filtradas
-
-        // Llamamos para renderizar las tiendas filtradas
-        renderTiendas(dom);
-
-        calcularYActualizarMetricas(dom); // Actualizamos las métricas según las tiendas filtradas
-
+      await cargarTiendas(dom);
+      renderTiendas(dom);
+      calcularYActualizarMetricas(dom);
     } catch (err) {
-        setError(dom, err?.message || "Error filtrando tiendas.");
+      setError(dom, err?.message || "Error filtrando tiendas.");
     } finally {
-        setLoading(dom, false);
+      setLoading(dom, false);
     }
-}
+  }
 
     const refetchDebounced = debounce(refetch, 250);
 
@@ -1157,13 +1203,14 @@
         setLoading(dom, true);
 
         try {
-            await cargarTiendas(dom); // Recargar tiendas sin filtros
-            renderTiendas(dom); // Renderizar las tiendas
-        } catch (err) {
-            setError(dom, err?.message || "Error al limpiar filtros.");
-        } finally {
-            setLoading(dom, false);
-        }
+        await cargarTiendas(dom);
+        renderTiendas(dom);
+        calcularYActualizarMetricas(dom);
+      } catch (err) {
+        setError(dom, err?.message || "Error al limpiar filtros.");
+      } finally {
+        setLoading(dom, false);
+      }
     });
 
     dom.btnPresetSku?.addEventListener("click", () => {

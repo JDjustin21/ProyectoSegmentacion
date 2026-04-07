@@ -3,13 +3,23 @@
 Módulo de rutas de Segmentación (Flask Blueprint).
 
 Responsabilidad:
-- Renderizar la vista principal (cards + filtros) consumiendo la API de SQL Server.
-- Exponer endpoints JSON para el modal (tiendas activas, última segmentación, guardar segmentación).
-- Exportar CSV SOLO de lo modificado en un rango de tiempo (por defecto "hoy" en America/Bogota).
+- Renderizar la vista principal (shell HTML de cards + filtros).
+- Exponer endpoints JSON para:
+  - listado resumido de referencias
+  - detalle de una referencia para el modal
+  - tiendas activas
+  - última segmentación
+  - guardar segmentación
+  - exportación CSV
+- Mantener las rutas HTTP del módulo delgadas, delegando la lógica de negocio
+  a SegmentacionDbService.
 
 Notas de arquitectura:
-- SQL Server: solo lectura, vía API .NET (passthrough).
-- Postgres: base operativa del aplicativo (tiendas versionadas, segmentaciones, etc).
+- SQL Server: solo lectura, vía API .NET / job de snapshot.
+- Postgres: base operativa del aplicativo.
+- La pantalla principal ya no consulta la API remota en caliente.
+- El listado inicial usa un resumen liviano.
+- El detalle del modal se carga bajo demanda.
 """
 import csv
 import io
@@ -33,8 +43,6 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 from backend.modules.auth.decorators import login_required, role_required
-from backend.modules.segmentacion.app_cache_service import AppCacheService
-from backend.modules.segmentacion.services import SegmentacionService
 from backend.modules.segmentacion.segmentacion_db_service import SegmentacionDbService
 from backend.repositories.postgres_repository import PostgresRepository
 from backend.config.settings import (
@@ -44,7 +52,7 @@ from backend.config.settings import (
     POSTGRES_DSN,
     POSTGRES_TIENDAS_VIEW,
     SEGMENTACION_CARDS_PER_PAGE,
-    SQLSERVER_API_URL,
+    METRICAS_EXISTENCIA_TALLA_VIEW,
 )
 import backend.config.settings as settings
 
@@ -55,82 +63,119 @@ segmentacion_bp = Blueprint(
     url_prefix="/segmentacion"
 )
 
-CACHE_KEY_REFERENCIAS = "referencias_sqlserver"
-CACHE_TTL_SECONDS = 120  # 2 min
 TZ_BOGOTA = ZoneInfo("America/Bogota")
 
 def _pg_repo() -> PostgresRepository:
     return PostgresRepository(POSTGRES_DSN)
 
 def _svc_pg(repo: PostgresRepository) -> SegmentacionDbService:
-    return SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    return SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW, METRICAS_EXISTENCIA_TALLA_VIEW)
 
+def _obtener_snapshot_updated_at():
+    """
+    Retorna solo la fecha del snapshot vigente.
+    No lee todo el dataset.
+    """
+    repo = _pg_repo()
+    svc_pg = _svc_pg(repo)
+    return svc_pg.obtener_snapshot_updated_at()
 
+def _obtener_referencias_resumen_cards():
+    """
+    Retorna solo el dataset liviano para cards.
+    La composición del resumen vive en SegmentacionDbService.
+    """
+    repo = _pg_repo()
+    svc_pg = _svc_pg(repo)
+    return svc_pg.listar_referencias_resumen_cards(dias_nuevo=7)
 
 @segmentacion_bp.route("/", methods=["GET"])
 @login_required
 def vista_segmentacion():
     """
     Vista principal:
-    - Obtiene referencias desde la API de SQL Server (.NET)
-    - Renderiza HTML con el dataset embebido (script JSON)
-    - Pasa configuración al frontend vía data-attributes (sin hardcode en JS)
+    - Renderiza el shell HTML
+    - Pasa configuración al frontend vía data-attributes
+    - Solo consulta la fecha del snapshot vigente
+    - El dataset de cards se carga por AJAX desde /api/referencias
     """
-    repo = _pg_repo()
-    cache = AppCacheService(repo)
-
-    cached = cache.get(CACHE_KEY_REFERENCIAS)
-    if cache.is_fresh(cached, CACHE_TTL_SECONDS):
-        referencias = cached["payload"]
-    else:
-        # Lock key fijo (un número) para "referencias"
-        LOCK_KEY = 910001  
-
-        got_lock = cache.try_lock(LOCK_KEY)
-        if got_lock:
-            try:
-                try:
-                    servicio = SegmentacionService(SQLSERVER_API_URL)
-                    referencias = servicio.obtener_referencias()
-                    cache.set(CACHE_KEY_REFERENCIAS, referencias)
-
-                except Exception as ex:
-                    # Si SQL Server API falla (VPN caída), NO tumbes la vista.
-                    # Usa cache (aunque esté viejo) o lista vacía para poder entrar al módulo.
-                    current_app.logger.exception("Fallo SQL Server API obteniendo referencias: %s", ex)
-                    referencias = (cached or {}).get("payload") or []
-            
-            finally:
-                cache.unlock(LOCK_KEY)
-        else:
-            # Otro ya está refrescando: esperamos un poquito el cache y usamos eso
-            cached2 = cache.wait_for_refresh(CACHE_KEY_REFERENCIAS, CACHE_TTL_SECONDS, max_wait_seconds=8.0)
-            referencias = (cached2 or {}).get("payload") or []
-
-            # fallback extremo: si por alguna razón sigue vacío, refrescamos igual
-            if not referencias:
-                try:
-                    servicio = SegmentacionService(SQLSERVER_API_URL)
-                    referencias = servicio.obtener_referencias()
-                    cache.set(CACHE_KEY_REFERENCIAS, referencias)
-                except Exception as ex:
-                    current_app.logger.exception("Fallo SQL Server API en fallback extremo: %s", ex)
-                    referencias = []
-
-    svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
-    referencias = svc_pg.marcar_y_anotar_referencias_nuevas(referencias, dias_nuevo=7)
-    referencias = svc_pg.anotar_segmentacion_y_conteo(referencias)
-
-    referencias.sort(key=lambda r: (not r.get("is_new", False)))
+    cache_updated_at = _obtener_snapshot_updated_at()
 
     return render_template(
         "segmentacion.html",
-        referencias=referencias,
         cards_per_page=SEGMENTACION_CARDS_PER_PAGE,
         images_base_url=IMAGES_BASE_URL,
         default_tallas_mvp=DEFAULT_TALLAS_MVP,
         lineas_tallas_fijas=LINEAS_TALLAS_FIJAS,
+        cache_updated_at=cache_updated_at,
     )
+
+@segmentacion_bp.get("/api/referencias")
+@login_required
+def api_referencias():
+    """
+    Devuelve SOLO el resumen de referencias para las cards.
+
+    Importante:
+    - no trae campos pesados del modal
+    - no hace escrituras al leer
+    - la lógica de composición vive en SegmentacionDbService
+    """
+    t0 = time.perf_counter()
+
+    referencias, cache_updated_at = _obtener_referencias_resumen_cards()
+
+    t1 = time.perf_counter()
+
+    current_app.logger.info(
+        "[SEGMENTACION][API_REFERENCIAS] total_ms=%.2f refs=%s",
+        (t1 - t0) * 1000,
+        len(referencias),
+    )
+
+    return jsonify({
+        "ok": True,
+        "data": referencias,
+        "meta": {
+            "count": len(referencias),
+            "cache_updated_at": cache_updated_at.isoformat() if cache_updated_at else None,
+        }
+    })
+
+@segmentacion_bp.get("/api/referencias/detalle")
+@login_required
+def api_referencia_detalle():
+    """
+    Retorna el detalle de UNA referencia para abrir el modal.
+
+    Este endpoint carga bajo demanda los campos pesados
+    que no deben viajar en el listado principal.
+    """
+    referencia_sku = (request.args.get("referenciaSku") or "").strip()
+    if not referencia_sku:
+        return jsonify({"ok": False, "error": "Falta query param: referenciaSku"}), 400
+
+    t0 = time.perf_counter()
+
+    repo = _pg_repo()
+    svc_pg = _svc_pg(repo)
+    data = svc_pg.obtener_referencia_detalle_snapshot(referencia_sku)
+
+    t1 = time.perf_counter()
+
+    if not data:
+        return jsonify({"ok": False, "error": "Referencia no encontrada"}), 404
+
+    current_app.logger.info(
+        "[SEGMENTACION][API_REFERENCIA_DETALLE] ref=%s total_ms=%.2f",
+        referencia_sku,
+        (t1 - t0) * 1000,
+    )
+
+    return jsonify({
+        "ok": True,
+        "data": data,
+    })
 
 @segmentacion_bp.get("/utilidades")
 @login_required
@@ -141,21 +186,6 @@ def vista_utilidades():
     - Importar imágenes a static/assets/images/referencias
     """
     return render_template("utilidades.html")
-
-@segmentacion_bp.post("/api/cache/referencias/refresh")
-@login_required
-def api_refresh_cache_referencias():
-    repo = _pg_repo()
-    cache = AppCacheService(repo)
-
-    servicio = SegmentacionService(SQLSERVER_API_URL)
-    referencias = servicio.obtener_referencias()
-
-    svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
-    referencias = svc_pg.marcar_y_anotar_referencias_nuevas(referencias, dias_nuevo=7)
-
-    cache.set(CACHE_KEY_REFERENCIAS, referencias)
-    return jsonify({"ok": True, "mensaje": "Cache de referencias actualizado", "count": len(referencias)})
 
 @segmentacion_bp.post("/api/referencias/ack")
 @login_required
@@ -186,7 +216,7 @@ def api_segmentar_referencia():
         return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
 
     repo = _pg_repo()
-    svc_pg = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    svc_pg = _svc_pg(repo)
 
     # Marcamos como segmentada en la base de datos
     svc_pg.marcar_como_segmentada(referencia_sku)
@@ -221,7 +251,7 @@ def api_tiendas_activas():
     clasificacion = (request.args.get("clasificacion") or "").strip()
 
     repo = _pg_repo()
-    svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    svc = _svc_pg(repo)
 
     data = svc.tiendas_activas_por_linea(
         linea,
@@ -249,7 +279,7 @@ def api_ultima_segmentacion():
         return jsonify({"ok": False, "error": "Falta query param: referenciaSku"}), 400
 
     repo = _pg_repo()
-    svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    svc = _svc_pg(repo)
 
     data = svc.ultima_segmentacion(referencia_sku)
     return jsonify({"ok": True, "data": data})
@@ -316,6 +346,7 @@ def api_metricas():
                 "resumenPorTienda": resumen,
                 "detallePorTalla": detalle,
                 "existenciaPorTalla": existencia,
+                "participacionLineaPorTienda": part_linea
             }
         })
     
@@ -370,7 +401,7 @@ def api_guardar_segmentacion():
     payload = request.get_json(silent=True) or {}
 
     repo = _pg_repo()
-    svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    svc = _svc_pg(repo)
 
     result = svc.guardar_segmentacion(payload)
     if result.get("ok") is True:
@@ -567,7 +598,7 @@ def api_reset_segmentaciones():
     Acción destructiva: solo ADMIN.
     """
     repo = _pg_repo()
-    svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    svc = _svc_pg(repo)
 
     result = svc.reset_segmentaciones()
     return jsonify(result)
@@ -586,7 +617,7 @@ def api_export_csv():
     Default: hoy (America/Bogota)
     """
     repo = _pg_repo()
-    svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW)
+    svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW, METRICAS_EXISTENCIA_TALLA_VIEW,)
 
     rows = svc.export_dataset_todas()
 
@@ -655,50 +686,51 @@ def api_export_csv():
     current_app.logger.info("Export rows: %s | Weekly map: %s", len(rows), len(ventas_map))
 
     headers = [
-        "id_segmentacion",
-        "estado_segmentacion",
+        "Id Segmentacion",
+        "Estado Segmentacion",
 
-        "referencia_sku",
-        "referencia_base",
-        "codigo_color",
-        "color",
-        "talla",
-        "codigo_barras",
-        "cantidad",
-        "linea",
-        "descripcion",
-        "categoria",
-        "tipo_portafolio",
-        "estado_sku",
-        "cuento",
-        "tipo_inventario",
-        "precio_unitario",
-        "perfil_prenda",
+        "Referencia Sku",
+        "Referencia Base",
+        "Codigo Color",
+        "Color",
+        "Talla",
+        "Codigo Barras",
+        "Cantidad",
+        "Existencia",
+        "Linea",
+        "Descripcion",
+        "Categoria",
+        "Tipo Portafolio",
+        "Estado Sku",
+        "Cuento",
+        "Tipo Inventario",
+        "Precio Unitario",
+        "Perfil Prenda",
         
-        "llave_naval",
-        "estado_detalle",
-        "cod_bodega",
-        "cod_dependencia",
-        "dependencia",
-        "desc_dependencia",
-        "ciudad",
-        "zona",
-        "clima",
-        "rankin_linea",
-        "testeo",
+        "Llave Naval",
+        "Estado Detalle",
+        "Codigo Bodega",
+        "Codigo Dependencia",
+        "Dependencia",
+        "Descripcion Dependencia",
+        "Ciudad",
+        "Zona",
+        "Clima",
+        "Ranking Linea",
+        "Testeo",
 
-        "fecha_creacion",
-        "fecha_actualizacion",
+        "Fecha Creacion",
+        "Fecha Actualizacion",
 
-        "semana1",
-        "semana2",
-        "semana3",
-        "semana4",
-        "semana5",
-        "semana6",
-        "semana7",
-        "semana8",
-        "TotalVentasSeamanal"
+        "Semana1",
+        "Semana2",
+        "Semana3",
+        "Semana4",
+        "Semana5",
+        "Semana6",
+        "Semana7",
+        "Semana8",
+        "TotalVentasSemanal"
     ]
 
     sio = io.StringIO()
@@ -706,8 +738,12 @@ def api_export_csv():
     writer.writeheader()
 
     for r in rows:
-
         referencia_sku = (r.get("referencia_sku") or "").strip()
+        referencia_base = (r.get("referencia_base") or "").strip()
+        codigo_color = (r.get("codigo_color") or "").strip()
+        color = (r.get("color") or "").strip()
+        perfil_prenda = (r.get("perfil_prenda") or "").strip()
+
         llave = (r.get("llave_naval") or "").strip()
         ean = _norm_digits(r.get("codigo_barras"))
 
@@ -715,63 +751,61 @@ def api_export_csv():
 
         def _to_int(v):
             try:
-                # maneja Decimal, float, int, str "1.0"
                 return int(float(v))
             except Exception:
                 return 0
-            
+
         if r.get("estado_segmentacion") == "INACTIVO":
             r["estado_segmentacion"] = "INACTIVO"
             r["estado_detalle"] = "INACTIVO"
             r["fecha_actualizacion"] = datetime.now(TZ_BOGOTA).isoformat()
 
         writer.writerow({
-           
-            "id_segmentacion": r.get("id_segmentacion"),
-            "estado_segmentacion": r.get("estado_segmentacion"),
+            "Id Segmentacion": r.get("id_segmentacion"),
+            "Estado Segmentacion": r.get("estado_segmentacion"),
 
-            "referencia_sku": referencia_sku,
-            "referencia_base": referencia_base,
-            "codigo_color": codigo_color,
-            "color": color,
-            "talla": r.get("talla"),
-            "codigo_barras": r.get("codigo_barras"),
-            "cantidad": r.get("cantidad"),
-            "linea": r.get("linea"),
-            "descripcion": r.get("descripcion"),
-            "categoria": r.get("categoria"),
-            "tipo_portafolio": r.get("tipo_portafolio"),
-            "estado_sku": r.get("estado_sku"),
-            "cuento": r.get("cuento"),
-            "tipo_inventario": r.get("tipo_inventario"),
-            "precio_unitario": int(round(float(r.get("precio_unitario") or 0))),
-            
-            "perfil_prenda": perfil_prenda,
-            "llave_naval": r.get("llave_naval"),
-            "estado_detalle": r.get("estado_detalle"),
+            "Referencia Sku": referencia_sku,
+            "Referencia Base": referencia_base,
+            "Codigo Color": codigo_color,
+            "Color": color,
+            "Talla": r.get("talla"),
+            "Codigo Barras": r.get("codigo_barras"),
+            "Cantidad": r.get("cantidad"),
+            "Existencia": r.get("existencia"),
+            "Linea": r.get("linea"),
+            "Descripcion": r.get("descripcion"),
+            "Categoria": r.get("categoria"),
+            "Tipo Portafolio": r.get("tipo_portafolio"),
+            "Estado Sku": r.get("estado_sku"),
+            "Cuento": r.get("cuento"),
+            "Tipo Inventario": r.get("tipo_inventario"),
+            "Precio Unitario": int(round(float(r.get("precio_unitario") or 0))),
+            "Perfil Prenda": perfil_prenda,
 
-            "cod_bodega": r.get("cod_bodega"),
-            "cod_dependencia": r.get("cod_dependencia"),
-            "dependencia": r.get("dependencia"),
-            "desc_dependencia": r.get("desc_dependencia"),
-            "ciudad": r.get("ciudad"),
-            "zona": r.get("zona"),
-            "clima": r.get("clima"),
-            "rankin_linea": r.get("rankin_linea"),
-            "testeo": r.get("testeo"),
+            "Llave Naval": r.get("llave_naval"),
+            "Estado Detalle": r.get("estado_detalle"),
+            "Codigo Bodega": r.get("cod_bodega"),
+            "Codigo Dependencia": r.get("cod_dependencia"),
+            "Dependencia": r.get("dependencia"),
+            "Descripcion Dependencia": r.get("desc_dependencia"),
+            "Ciudad": r.get("ciudad"),
+            "Zona": r.get("zona"),
+            "Clima": r.get("clima"),
+            "Ranking Linea": r.get("rankin_linea"),
+            "Testeo": r.get("testeo"),
 
-            "fecha_creacion": r.get("fecha_creacion"),
-            "fecha_actualizacion": r.get("fecha_actualizacion"),
+            "Fecha Creacion": r.get("fecha_creacion"),
+            "Fecha Actualizacion": r.get("fecha_actualizacion"),
 
-            "semana1": _to_int(wk.get("semana1", 0)),
-            "semana2": _to_int(wk.get("semana2", 0)),
-            "semana3": _to_int(wk.get("semana3", 0)),
-            "semana4": _to_int(wk.get("semana4", 0)),
-            "semana5": _to_int(wk.get("semana5", 0)),
-            "semana6": _to_int(wk.get("semana6", 0)),
-            "semana7": _to_int(wk.get("semana7", 0)),
-            "semana8": _to_int(wk.get("semana8", 0)),
-            "TotalVentasSeamanal": sum(_to_int(wk.get(f"semana{i}", 0)) for i in range(1, 9))
+            "Semana1": _to_int(wk.get("semana1", 0)),
+            "Semana2": _to_int(wk.get("semana2", 0)),
+            "Semana3": _to_int(wk.get("semana3", 0)),
+            "Semana4": _to_int(wk.get("semana4", 0)),
+            "Semana5": _to_int(wk.get("semana5", 0)),
+            "Semana6": _to_int(wk.get("semana6", 0)),
+            "Semana7": _to_int(wk.get("semana7", 0)),
+            "Semana8": _to_int(wk.get("semana8", 0)),
+            "TotalVentasSemanal": sum(_to_int(wk.get(f"semana{i}", 0)) for i in range(1, 9))
         })
 
     # Tip: utf-8-sig ayuda a Excel a abrir acentos bien (BOM)

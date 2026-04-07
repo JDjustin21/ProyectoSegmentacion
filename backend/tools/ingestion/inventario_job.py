@@ -34,8 +34,10 @@ def setup_logger(job_name: str = "inventario_job") -> logging.Logger:
     return logger
 
 
-def norm(v: str) -> str:
-    return (v or "").strip()
+def norm(v) -> str:
+    if v is None:
+        return ""
+    return str(v).strip()
 
 
 def md5(text: str) -> str:

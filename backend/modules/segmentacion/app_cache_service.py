@@ -36,6 +36,22 @@ class AppCacheService:
             DO UPDATE SET payload_json=EXCLUDED.payload_json, updated_at=EXCLUDED.updated_at;
         """, {"k": cache_key, "p": payload_json, "u": now})
 
+    def has_payload(self, cached: Optional[Dict[str, Any]]) -> bool:
+        return bool(cached and cached.get("payload") is not None)
+
+    def age_seconds(self, cached: Optional[Dict[str, Any]]) -> Optional[float]:
+        if not cached:
+            return None
+
+        updated_at = cached.get("updated_at")
+        if not updated_at:
+            return None
+
+        try:
+            return (datetime.now(timezone.utc) - updated_at.astimezone(timezone.utc)).total_seconds()
+        except Exception:
+            return None
+    
     def is_fresh(self, cached: Optional[Dict[str, Any]], ttl_seconds: int) -> bool:
         if not cached or cached.get("payload") is None:
             return False

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from backend.config.settings import DEFAULT_USER_ID
 from backend.repositories.postgres_repository import PostgresRepository
@@ -25,10 +25,122 @@ class SegmentacionDbService:
     - Reset (TRUNCATE) de tablas de segmentación (admin)
     """
 
-    def __init__(self, repo: PostgresRepository, view_tiendas: str):
+    def __init__(self, repo: PostgresRepository, view_tiendas: str, view_existencia_talla: str,):
         self._repo = repo
         self._view_tiendas = view_tiendas
+        self._view_existencia_talla = view_existencia_talla
 
+    def obtener_snapshot_updated_at(self) -> Optional[datetime]:
+        """
+        Retorna la fecha/hora más reciente del snapshot vigente.
+
+        Responsabilidad:
+        - solo traer el metadato de actualización
+        - evitar leer todas las referencias cuando la vista shell
+          solo necesita mostrar la fecha del snapshot
+        """
+        sql = """
+            SELECT MAX(loaded_at) AS loaded_at
+            FROM public.referencias_snapshot_actual;
+        """
+        row = self._repo.fetch_one(sql)
+
+        loaded_at = row.get("loaded_at") if row else None
+        if not loaded_at:
+            return None
+
+        if getattr(loaded_at, "tzinfo", None) is not None:
+            return loaded_at.astimezone(TZ_BOGOTA)
+
+        return loaded_at
+
+    def listar_referencias_resumen_cards(
+        self,
+        dias_nuevo: int = 7
+    ) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
+        """
+        Retorna SOLO el dataset liviano para cards.
+
+        Importante:
+        - no trae campos pesados del modal como tallasConteo o codigosBarrasPorTalla
+        - anota referencias nuevas solo en lectura
+        - anota estado y conteo de segmentación
+        """
+        sql = """
+            SELECT
+                referencia_sku AS referencia,
+                descripcion,
+                categoria,
+                color,
+                estado,
+                tipo_portafolio AS "tipoPortafolio",
+                linea,
+                cuento,
+                precio_unitario AS "precioUnitario",
+                fecha_creacion AS "fechaCreacion",
+                cantidad_tallas AS "cantidadTallas"
+            FROM public.referencias_snapshot_actual
+            ORDER BY referencia_sku;
+        """
+        referencias = self._repo.fetch_all(sql)
+        cache_updated_at = self.obtener_snapshot_updated_at()
+
+        referencias = self.anotar_referencias_nuevas(
+            referencias,
+            dias_nuevo=dias_nuevo
+        )
+
+        referencias = self.anotar_segmentacion_y_conteo(referencias)
+
+        referencias.sort(
+            key=lambda r: (
+                not bool(r.get("is_new", False)),
+                (r.get("referencia") or "").strip()
+            )
+        )
+
+        return referencias, cache_updated_at
+
+    def obtener_referencia_detalle_snapshot(
+        self,
+        referencia_sku: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retorna el detalle de UNA referencia desde snapshot.
+
+        Este método alimenta el modal bajo demanda.
+        Aquí sí traemos los campos pesados que no deben viajar
+        en el listado principal.
+        """
+        ref = (referencia_sku or "").strip()
+        if not ref:
+            return None
+
+        sql = """
+            SELECT
+                referencia_sku AS "referenciaSku",
+                referencia_base AS "referenciaBase",
+                descripcion,
+                categoria,
+                color,
+                codigo_color AS "codigoColor",
+                perfil_prenda AS "perfilPrenda",
+                estado,
+                tipo_inventario AS "tipoInventario",
+                tipo_portafolio AS "tipoPortafolio",
+                linea,
+                cuento,
+                precio_unitario AS "precioUnitario",
+                fecha_creacion AS "fechaCreacion",
+                cantidad_tallas AS "cantidadTallas",
+                tallas,
+                tallas_conteo_json AS "tallasConteo",
+                codigos_barras_por_talla_json AS "codigosBarrasPorTalla"
+            FROM public.referencias_snapshot_actual
+            WHERE referencia_sku = %(ref)s
+            LIMIT 1;
+        """
+        return self._repo.fetch_one(sql, {"ref": ref})
     # -------------------------
     # Normalización de línea
     # -------------------------
@@ -538,6 +650,7 @@ class SegmentacionDbService:
                 d.talla,
                 d.codigo_barras AS codigo_barras,
                 d.cantidad,
+                ex.existencia_talla AS existencia,
                 d.estado_detalle,
                 d.fecha_actualizacion,
 
@@ -552,9 +665,14 @@ class SegmentacionDbService:
                 t.testeo_fnl AS testeo
             FROM segmentacion_detalle d
             JOIN segmentacion s
-              ON s.id_segmentacion = d.id_segmentacion
+            ON s.id_segmentacion = d.id_segmentacion
             LEFT JOIN {self._view_tiendas} t
-              ON t.llave_naval = d.llave_naval
+            ON t.llave_naval = d.llave_naval
+            LEFT JOIN {self._view_existencia_talla} ex
+            ON ex.llave_naval = d.llave_naval
+            AND ex.referencia_sku = s.referencia
+            AND ex.talla = d.talla
+            AND COALESCE(ex.ean, '') = COALESCE(d.codigo_barras, '')
             ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
         """
         return self._repo.fetch_all(sql)
@@ -584,6 +702,8 @@ class SegmentacionDbService:
                 d.estado_detalle,
                 d.fecha_actualizacion,
 
+                ex.existencia_talla AS existencia,
+
                 t.cod_bodega,
                 t.cod_dependencia,
                 t.dependencia,
@@ -595,11 +715,16 @@ class SegmentacionDbService:
                 t.testeo_fnl AS testeo
             FROM segmentacion_detalle d
             JOIN segmentacion s
-              ON s.id_segmentacion = d.id_segmentacion
+            ON s.id_segmentacion = d.id_segmentacion
             LEFT JOIN {self._view_tiendas} t
-              ON t.llave_naval = d.llave_naval
+            ON t.llave_naval = d.llave_naval
+            LEFT JOIN {self._view_existencia_talla} ex
+            ON ex.llave_naval = d.llave_naval
+            AND ex.referencia_sku = s.referencia
+            AND ex.talla = d.talla
+            AND COALESCE(ex.ean, '') = COALESCE(d.codigo_barras, '')
             WHERE d.fecha_actualizacion >= %(desde)s
-              AND d.fecha_actualizacion <  %(hasta)s
+            AND d.fecha_actualizacion <  %(hasta)s
             ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
         """
         return self._repo.fetch_all(sql, {"desde": desde, "hasta": hasta})
@@ -648,6 +773,42 @@ class SegmentacionDbService:
             r["is_new"] = bool(ref and ref in nuevas_set)
 
         return referencias
+    
+    def sincronizar_referencias_vistas_snapshot(self, referencias: List[Dict[str, Any]]) -> int:
+        """
+        Sincroniza referencias_vistas con el snapshot vigente.
+
+        Responsabilidad:
+        - registrar nuevas referencias si no existían
+        - actualizar last_seen de las ya existentes
+
+        Esta operación debe ejecutarse desde el job/snapshot,
+        NO desde la carga de la vista principal.
+        """
+        if not referencias:
+            return 0
+
+        now = datetime.now(TZ_BOGOTA)
+
+        ref_list: List[str] = []
+        for r in referencias:
+            ref = (r.get("referencia") or r.get("referenciaSku") or r.get("Referencia") or "").strip()
+            if ref:
+                ref_list.append(ref)
+
+        if not ref_list:
+            return 0
+
+        sql_upsert = """
+            INSERT INTO public.referencias_vistas (referencia_sku, last_seen)
+            VALUES (%(referencia_sku)s, %(last_seen)s)
+            ON CONFLICT (referencia_sku)
+            DO UPDATE SET last_seen = EXCLUDED.last_seen;
+        """
+        rows = [{"referencia_sku": ref, "last_seen": now} for ref in ref_list]
+        self._repo.execute_many(sql_upsert, rows)
+
+        return len(rows)
 
     def anotar_segmentacion_y_conteo(self, referencias: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not referencias:
@@ -669,6 +830,46 @@ class SegmentacionDbService:
             meta = flags.get(ref, {"is_segmented": False, "tiendas_activas_segmentadas": 0})
             r["is_segmented"] = bool(meta["is_segmented"])
             r["tiendas_activas_segmentadas"] = int(meta["tiendas_activas_segmentadas"] or 0)
+
+        return referencias
+    
+    def anotar_referencias_nuevas(
+        self,
+        referencias: List[Dict[str, Any]],
+        dias_nuevo: int = 7
+    ) -> List[Dict[str, Any]]:
+        """
+        Marca is_new en las referencias usando referencias_vistas.
+        Solo lectura. No hace upserts.
+        """
+        if not referencias:
+            return referencias
+
+        now = datetime.now(TZ_BOGOTA)
+        cutoff = now - timedelta(days=int(dias_nuevo))
+
+        ref_list: List[str] = []
+        for r in referencias:
+            ref = (r.get("referencia") or r.get("referenciaSku") or r.get("Referencia") or "").strip()
+            if ref:
+                ref_list.append(ref)
+
+        if not ref_list:
+            return referencias
+
+        sql_nuevas = """
+            SELECT referencia_sku
+            FROM public.referencias_vistas
+            WHERE referencia_sku = ANY(%(refs)s)
+              AND first_seen >= %(cutoff)s
+              AND acknowledged_at IS NULL;
+        """
+        nuevas_rows = self._repo.fetch_all(sql_nuevas, {"refs": ref_list, "cutoff": cutoff})
+        nuevas_set = {(x.get("referencia_sku") or "").strip() for x in nuevas_rows}
+
+        for r in referencias:
+            ref = (r.get("referencia") or r.get("referenciaSku") or r.get("Referencia") or "").strip()
+            r["is_new"] = bool(ref and ref in nuevas_set)
 
         return referencias
 

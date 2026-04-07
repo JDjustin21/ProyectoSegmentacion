@@ -1,0 +1,3 @@
+VENTAS_SOURCE_FILE=\\10.10.20.5\creytex\GESTION COMERCIAL MARCA PROPIA\LOGISTICA MARCA PROPIA\CLIENTES\CUBO DE VENTAS\BSPlanaVentas2026.txt
+VENTAS_BATCH_SIZE=5000
+OK: nueva versión activa id_version_ventas=22, filas_staging=91243, filas_final_insertadas~=4230

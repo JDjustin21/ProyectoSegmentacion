@@ -1,0 +1,46 @@
+[07/04/2026  8:00:02.36] INICIO LOG inventario_movimiento_job
+[07/04/2026  8:00:02.37] INV_BATCH_SIZE=200 
+[07/04/2026  8:00:02.38] INV_API_TIMEOUT=120 
+[07/04/2026  8:00:02.39] INICIO python -m backend.tools.ingestion.inventario_movimiento_job 
+python-dotenv could not parse statement starting at line 1
+2026-04-07 08:00:03,394 | INFO | Logger iniciado en consola/stdout.
+2026-04-07 08:00:03,506 | INFO | Version creada (Inactiva): id_version_movimiento=28
+2026-04-07 08:00:04,388 | INFO | Universo referencias: 2151
+2026-04-07 08:00:04,388 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-04-07 08:00:04,388 | INFO | Lote 1/11: refs=200 -> llamando API...
+2026-04-07 08:00:46,364 | INFO | Lote 1/11: API filas=101191 truncado=False
+2026-04-07 08:00:52,178 | INFO | Lote 1/11: insertadas=101191 acumulado=101191 tiempo_s=47.79
+2026-04-07 08:00:52,178 | INFO | Lote 2/11: refs=200 -> llamando API...
+2026-04-07 08:01:27,951 | INFO | Lote 2/11: API filas=101191 truncado=False
+2026-04-07 08:01:32,290 | INFO | Lote 2/11: insertadas=101191 acumulado=202382 tiempo_s=40.11
+2026-04-07 08:01:32,290 | INFO | Lote 3/11: refs=200 -> llamando API...
+2026-04-07 08:02:08,335 | INFO | Lote 3/11: API filas=101191 truncado=False
+2026-04-07 08:02:12,895 | INFO | Lote 3/11: insertadas=101191 acumulado=303573 tiempo_s=40.61
+2026-04-07 08:02:12,896 | INFO | Lote 4/11: refs=200 -> llamando API...
+2026-04-07 08:02:47,925 | INFO | Lote 4/11: API filas=101191 truncado=False
+2026-04-07 08:02:52,125 | INFO | Lote 4/11: insertadas=101191 acumulado=404764 tiempo_s=39.23
+2026-04-07 08:02:52,125 | INFO | Lote 5/11: refs=200 -> llamando API...
+2026-04-07 08:03:25,884 | INFO | Lote 5/11: API filas=101191 truncado=False
+2026-04-07 08:03:30,625 | INFO | Lote 5/11: insertadas=101191 acumulado=505955 tiempo_s=38.50
+2026-04-07 08:03:30,625 | INFO | Lote 6/11: refs=200 -> llamando API...
+2026-04-07 08:04:07,183 | INFO | Lote 6/11: API filas=101191 truncado=False
+2026-04-07 08:04:11,378 | INFO | Lote 6/11: insertadas=101191 acumulado=607146 tiempo_s=40.75
+2026-04-07 08:04:11,378 | INFO | Lote 7/11: refs=200 -> llamando API...
+2026-04-07 08:04:46,051 | INFO | Lote 7/11: API filas=101191 truncado=False
+2026-04-07 08:04:50,782 | INFO | Lote 7/11: insertadas=101191 acumulado=708337 tiempo_s=39.40
+2026-04-07 08:04:50,782 | INFO | Lote 8/11: refs=200 -> llamando API...
+2026-04-07 08:05:24,342 | INFO | Lote 8/11: API filas=101191 truncado=False
+2026-04-07 08:05:28,434 | INFO | Lote 8/11: insertadas=101191 acumulado=809528 tiempo_s=37.65
+2026-04-07 08:05:28,434 | INFO | Lote 9/11: refs=200 -> llamando API...
+2026-04-07 08:06:03,252 | INFO | Lote 9/11: API filas=101191 truncado=False
+2026-04-07 08:06:07,861 | INFO | Lote 9/11: insertadas=101191 acumulado=910719 tiempo_s=39.43
+2026-04-07 08:06:07,861 | INFO | Lote 10/11: refs=200 -> llamando API...
+2026-04-07 08:06:43,161 | INFO | Lote 10/11: API filas=101191 truncado=False
+2026-04-07 08:06:47,959 | INFO | Lote 10/11: insertadas=101191 acumulado=1011910 tiempo_s=40.10
+2026-04-07 08:06:47,959 | INFO | Lote 11/11: refs=151 -> llamando API...
+2026-04-07 08:07:25,888 | INFO | Lote 11/11: API filas=101191 truncado=False
+2026-04-07 08:07:30,894 | INFO | Lote 11/11: insertadas=101191 acumulado=1113101 tiempo_s=42.94
+2026-04-07 08:07:31,115 | INFO | Version marcada Activa: id_version_movimiento=28 filas_total=1113101
+2026-04-07 08:07:31,115 | INFO | OK movimientos de inventario. version=28 filas=1113101
+SQLSERVER_API_URL = http://localhost:5031
+[07/04/2026  8:07:31.43] OK inventario_movimiento_job log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_movimiento_job.log 
