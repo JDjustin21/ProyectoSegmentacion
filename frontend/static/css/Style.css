@@ -1008,8 +1008,32 @@ html, body{
   text-align: left;
 }
 
+/* Predeterminado */
+.preset-menu-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  transition: background 0.3s ease, box-shadow 0.3s ease; /* Añadido para una transición suave */
+}
 
+.preset-menu-item:last-child {
+  border-bottom: none;
+}
 
+.preset-menu-item:hover {
+  background: rgba(255,255,255,0.1); /* Fondo más claro para ambas opciones */
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2); /* Sombra más suave y consistente */
+}
+
+.preset-menu-item:focus {
+  background: rgba(255, 255, 255, 0.15); /* Fondo más marcado cuando tiene foco (accesibilidad) */
+  outline: none; /* Elimina el borde de enfoque por defecto */
+}
+
+/* Foco al pasar con el teclado */
+.preset-menu-item:focus-visible {
+  border: 2px solid #fff; /* Bordes de enfoque con color blanco para accesibilidad */
+}
 
 /* ============================
    FIN Style.css

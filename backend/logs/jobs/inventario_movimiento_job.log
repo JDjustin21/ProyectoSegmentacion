@@ -1,46 +1,109 @@
-[07/04/2026  8:00:02.36] INICIO LOG inventario_movimiento_job
-[07/04/2026  8:00:02.37] INV_BATCH_SIZE=200 
-[07/04/2026  8:00:02.38] INV_API_TIMEOUT=120 
-[07/04/2026  8:00:02.39] INICIO python -m backend.tools.ingestion.inventario_movimiento_job 
+[17/04/2026  8:00:02.53] INICIO LOG inventario_movimiento_job
+[17/04/2026  8:00:02.54] INV_BATCH_SIZE=200 
+[17/04/2026  8:00:02.55] INV_API_TIMEOUT=120 
+[17/04/2026  8:00:02.56] INICIO python -m backend.tools.ingestion.inventario_movimiento_job 
 python-dotenv could not parse statement starting at line 1
-2026-04-07 08:00:03,394 | INFO | Logger iniciado en consola/stdout.
-2026-04-07 08:00:03,506 | INFO | Version creada (Inactiva): id_version_movimiento=28
-2026-04-07 08:00:04,388 | INFO | Universo referencias: 2151
-2026-04-07 08:00:04,388 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
-2026-04-07 08:00:04,388 | INFO | Lote 1/11: refs=200 -> llamando API...
-2026-04-07 08:00:46,364 | INFO | Lote 1/11: API filas=101191 truncado=False
-2026-04-07 08:00:52,178 | INFO | Lote 1/11: insertadas=101191 acumulado=101191 tiempo_s=47.79
-2026-04-07 08:00:52,178 | INFO | Lote 2/11: refs=200 -> llamando API...
-2026-04-07 08:01:27,951 | INFO | Lote 2/11: API filas=101191 truncado=False
-2026-04-07 08:01:32,290 | INFO | Lote 2/11: insertadas=101191 acumulado=202382 tiempo_s=40.11
-2026-04-07 08:01:32,290 | INFO | Lote 3/11: refs=200 -> llamando API...
-2026-04-07 08:02:08,335 | INFO | Lote 3/11: API filas=101191 truncado=False
-2026-04-07 08:02:12,895 | INFO | Lote 3/11: insertadas=101191 acumulado=303573 tiempo_s=40.61
-2026-04-07 08:02:12,896 | INFO | Lote 4/11: refs=200 -> llamando API...
-2026-04-07 08:02:47,925 | INFO | Lote 4/11: API filas=101191 truncado=False
-2026-04-07 08:02:52,125 | INFO | Lote 4/11: insertadas=101191 acumulado=404764 tiempo_s=39.23
-2026-04-07 08:02:52,125 | INFO | Lote 5/11: refs=200 -> llamando API...
-2026-04-07 08:03:25,884 | INFO | Lote 5/11: API filas=101191 truncado=False
-2026-04-07 08:03:30,625 | INFO | Lote 5/11: insertadas=101191 acumulado=505955 tiempo_s=38.50
-2026-04-07 08:03:30,625 | INFO | Lote 6/11: refs=200 -> llamando API...
-2026-04-07 08:04:07,183 | INFO | Lote 6/11: API filas=101191 truncado=False
-2026-04-07 08:04:11,378 | INFO | Lote 6/11: insertadas=101191 acumulado=607146 tiempo_s=40.75
-2026-04-07 08:04:11,378 | INFO | Lote 7/11: refs=200 -> llamando API...
-2026-04-07 08:04:46,051 | INFO | Lote 7/11: API filas=101191 truncado=False
-2026-04-07 08:04:50,782 | INFO | Lote 7/11: insertadas=101191 acumulado=708337 tiempo_s=39.40
-2026-04-07 08:04:50,782 | INFO | Lote 8/11: refs=200 -> llamando API...
-2026-04-07 08:05:24,342 | INFO | Lote 8/11: API filas=101191 truncado=False
-2026-04-07 08:05:28,434 | INFO | Lote 8/11: insertadas=101191 acumulado=809528 tiempo_s=37.65
-2026-04-07 08:05:28,434 | INFO | Lote 9/11: refs=200 -> llamando API...
-2026-04-07 08:06:03,252 | INFO | Lote 9/11: API filas=101191 truncado=False
-2026-04-07 08:06:07,861 | INFO | Lote 9/11: insertadas=101191 acumulado=910719 tiempo_s=39.43
-2026-04-07 08:06:07,861 | INFO | Lote 10/11: refs=200 -> llamando API...
-2026-04-07 08:06:43,161 | INFO | Lote 10/11: API filas=101191 truncado=False
-2026-04-07 08:06:47,959 | INFO | Lote 10/11: insertadas=101191 acumulado=1011910 tiempo_s=40.10
-2026-04-07 08:06:47,959 | INFO | Lote 11/11: refs=151 -> llamando API...
-2026-04-07 08:07:25,888 | INFO | Lote 11/11: API filas=101191 truncado=False
-2026-04-07 08:07:30,894 | INFO | Lote 11/11: insertadas=101191 acumulado=1113101 tiempo_s=42.94
-2026-04-07 08:07:31,115 | INFO | Version marcada Activa: id_version_movimiento=28 filas_total=1113101
-2026-04-07 08:07:31,115 | INFO | OK movimientos de inventario. version=28 filas=1113101
+2026-04-17 08:00:03,134 | INFO | Logger iniciado en consola/stdout.
+2026-04-17 08:00:03,191 | INFO | Version creada (Inactiva): id_version_movimiento=65
+2026-04-17 08:00:03,982 | INFO | Universo referencias: 2155
+2026-04-17 08:00:03,983 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
+2026-04-17 08:00:03,983 | INFO | Lote 1/11: refs=200 -> llamando API...
+Traceback (most recent call last):
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+        (self._dns_host, self.port),
+    ...<2 lines>...
+        socket_options=self.socket_options,
+    )
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\util\connection.py", line 85, in create_connection
+    raise err
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\util\connection.py", line 73, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+ConnectionRefusedError: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connectionpool.py", line 493, in _make_request
+    conn.request(
+    ~~~~~~~~~~~~^
+        method,
+        ^^^^^^^
+    ...<6 lines>...
+        enforce_content_length=enforce_content_length,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connection.py", line 500, in request
+    self.endheaders()
+    ~~~~~~~~~~~~~~~^^
+  File "C:\Users\auxiliarproyecto\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\auxiliarproyecto\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Users\auxiliarproyecto\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ~~~~~~~~~~~~~~^^
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connection.py", line 219, in _new_conn
+    raise NewConnectionError(
+        self, f"Failed to establish a new connection: {e}"
+    ) from e
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='localhost', port=5031): Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\adapters.py", line 644, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\util\retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='localhost', port=5031): Max retries exceeded with url: /api/sqlserver/inventario/consultar (Caused by NewConnectionError("HTTPConnection(host='localhost', port=5031): Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_movimiento_job.py", line 235, in <module>
+    main()
+    ~~~~^^
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_movimiento_job.py", line 193, in main
+    datos, truncado = llamar_api_movimiento(batch, timeout_sec=timeout)
+                      ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_movimiento_job.py", line 156, in llamar_api_movimiento
+    r = requests.post(url, json=body, timeout=timeout_sec)
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\api.py", line 115, in post
+    return request("post", url, data=data, json=json, **kwargs)
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\adapters.py", line 677, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=5031): Max retries exceeded with url: /api/sqlserver/inventario/consultar (Caused by NewConnectionError("HTTPConnection(host='localhost', port=5031): Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión"))
 SQLSERVER_API_URL = http://localhost:5031
-[07/04/2026  8:07:31.43] OK inventario_movimiento_job log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_movimiento_job.log 
+[17/04/2026  8:00:08.76] ERROR inventario_movimiento_job rc=1 log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_movimiento_job.log 

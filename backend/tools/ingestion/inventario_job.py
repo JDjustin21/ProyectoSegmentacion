@@ -1,16 +1,16 @@
-#backend/tools/ingestion/inventario_job.py
+# backend/tools/ingestion/inventario_job.py
 
 import os
 import math
-import json
 import hashlib
-import requests
-from datetime import datetime
 import logging
-from pathlib import Path
+from datetime import datetime
+
+import requests
+from psycopg2.extras import execute_values
+
 from backend.repositories.postgres_repository import PostgresRepository
 import backend.config.settings as settings
-from psycopg2.extras import execute_values
 
 
 def setup_logger(job_name: str = "inventario_job") -> logging.Logger:
@@ -45,7 +45,9 @@ def md5(text: str) -> str:
 
 
 def build_hash_fila(row: dict) -> str:
-    # Clave estable: referencia_sku|ean|talla|bodega|codigo_siesa
+    """
+    Clave estable para el snapshot actual de inventario.
+    """
     parts = [
         norm(row.get("referencia_sku")),
         norm(row.get("ean")),
@@ -63,8 +65,8 @@ def chunk_list(arr, size):
 
 def get_referencias_universo(repo: PostgresRepository) -> list[str]:
     """
-    MVP: universo = referencias que han tenido ventas en últimos 120 días.
-    (Puedes ajustar a otro criterio sin tocar el resto del job)
+    Universo de referencias a consultar.
+    Por ahora: referencias con ventas en los últimos 120 días.
     """
     q = """
     SELECT DISTINCT referencia_sku
@@ -76,52 +78,48 @@ def get_referencias_universo(repo: PostgresRepository) -> list[str]:
     return [r["referencia_sku"] for r in rows if r.get("referencia_sku")]
 
 
-def crear_version(repo: PostgresRepository, observaciones: str = "") -> int:
-    row = repo.fetch_one("""
-        INSERT INTO public.inventario_version (estado_version, observaciones)
-        VALUES ('Inactiva', %(obs)s)
-        RETURNING id_version_inventario;
-    """, {"obs": observaciones})
-    return int(row["id_version_inventario"])
-
-
-def marcar_version_activa(repo: PostgresRepository, id_version: int, filas_total: int):
-    repo.execute("""
-        UPDATE public.inventario_version
-        SET estado_version='Inactiva'
-        WHERE estado_version='Activa';
-    """, {})
-
-    repo.execute("""
-        UPDATE public.inventario_version
-        SET estado_version='Activa',
-            filas_total=%(filas)s
-        WHERE id_version_inventario=%(id)s;
-    """, {"filas": int(filas_total), "id": int(id_version)})
-
-
-def insertar_lote_bulk(repo: PostgresRepository, id_version: int, rows: list[dict]) -> int:
+def preparar_snapshot_inventario_actual(repo: PostgresRepository) -> None:
     """
-    Inserta un lote completo en 1 sola operación (mucho más rápido).
-    Idempotente por (id_version_inventario, hash_fila).
+    Regla de negocio:
+    - inventario_actual representa solo el snapshot vigente.
+    - no se conserva histórico en inventario_existencias.
+    - antes de cargar el nuevo snapshot se limpia completamente inventario_actual.
+    """
+    repo.execute("TRUNCATE TABLE public.inventario_actual;", {})
+
+
+def insertar_lote_bulk(repo: PostgresRepository, rows: list[dict]) -> int:
+    """
+    Inserta un lote completo directamente en inventario_actual.
+    Como inventario_actual es el snapshot vigente, no usa versionado.
+    Idempotencia por hash_fila dentro del mismo snapshot.
     """
     if not rows:
         return 0
 
     sql = """
-    INSERT INTO public.inventario_existencias
+    INSERT INTO public.inventario_actual
     (
-      id_version_inventario,
-      referencia_sku, ean, talla, bodega,
-      disponible, existencia,
-      linea, codigo_siesa,
-      llave_naval, cod_dependencia,
+      referencia_sku,
+      ean,
+      talla,
+      bodega,
+      disponible,
+      existencia,
+      linea,
+      codigo_siesa,
+      llave_naval,
+      cod_dependencia,
       fecha_ultima_actualizacion,
       hash_fila
     )
     VALUES %s
-    ON CONFLICT (id_version_inventario, hash_fila)
+    ON CONFLICT (hash_fila)
     DO UPDATE SET
+      referencia_sku = EXCLUDED.referencia_sku,
+      ean = EXCLUDED.ean,
+      talla = EXCLUDED.talla,
+      bodega = EXCLUDED.bodega,
       disponible = EXCLUDED.disponible,
       existencia = EXCLUDED.existencia,
       linea = EXCLUDED.linea,
@@ -134,7 +132,6 @@ def insertar_lote_bulk(repo: PostgresRepository, id_version: int, rows: list[dic
     values = []
     for r in rows:
         values.append((
-            int(id_version),
             norm(r.get("referencia_sku")),
             norm(r.get("ean")),
             norm(r.get("talla")),
@@ -149,7 +146,7 @@ def insertar_lote_bulk(repo: PostgresRepository, id_version: int, rows: list[dic
         ))
 
     def _tx(cur):
-        template = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now(),%s)"
+        template = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now(),%s)"
         execute_values(cur, sql, values, template=template, page_size=2000)
 
     repo.run_in_transaction(_tx)
@@ -165,10 +162,11 @@ def pick(d: dict, *keys, default=""):
 
 def mapear_datos_api(item: dict) -> dict:
     """
-    Normaliza campos desde tu DTO .NET a lo que guardamos en Postgres.
-    Soporta PascalCase y camelCase, y nombres con underscore.
+    Normaliza campos desde el DTO .NET a lo que guardamos en Postgres.
+    Soporta PascalCase, camelCase y nombres con underscore.
     """
     ref = norm(pick(item, "ReferenciaSku", "referenciaSku", "referencia_sku"))
+
     return {
         "referencia_sku": ref,
         "ean": norm(pick(item, "Ean", "ean")),
@@ -191,21 +189,17 @@ def llamar_api_inventario(referencias: list[str], timeout_sec: int = 120) -> tup
 
     r = requests.post(url, json=body, timeout=timeout_sec)
     r.raise_for_status()
-    data = r.json()
 
+    data = r.json()
     datos = data.get("datos") or []
     truncado = bool(data.get("truncado"))
+
     return datos, truncado
 
 
 def main():
     logger = setup_logger("inventario_job")
-
     repo = PostgresRepository(settings.POSTGRES_DSN)
-
-    observ = f"Job inventario lotes {datetime.now().isoformat()}"
-    id_version = crear_version(repo, observaciones=observ)
-    logger.info(f"Version creada (Inactiva): id_version_inventario={id_version}")
 
     refs = get_referencias_universo(repo)
     logger.info(f"Universo referencias: {len(refs)}")
@@ -217,6 +211,10 @@ def main():
     timeout = int(os.getenv("INV_API_TIMEOUT", "120"))
 
     logger.info(f"Config: INV_BATCH_SIZE={batch_size} INV_API_TIMEOUT={timeout}")
+
+    # Limpiar snapshot actual antes de reconstruirlo.
+    preparar_snapshot_inventario_actual(repo)
+    logger.info("inventario_actual truncada correctamente antes de iniciar la carga.")
 
     total_insertadas = 0
     total_batches = math.ceil(len(refs) / batch_size)
@@ -230,7 +228,7 @@ def main():
 
         if truncado:
             raise SystemExit(
-                f"API devolvió truncado=true. Reduce INV_BATCH_SIZE "
+                f"API devolvió truncado=true. Reduce INV_BATCH_SIZE. "
                 f"Lote size={len(batch)}"
             )
 
@@ -240,23 +238,16 @@ def main():
             row["hash_fila"] = build_hash_fila(row)
             filas.append(row)
 
-        ins = insertar_lote_bulk(repo, id_version, filas)
+        ins = insertar_lote_bulk(repo, filas)
         total_insertadas += ins
 
         dt = (datetime.now() - t0).total_seconds()
-        logger.info(f"Lote {idx}/{total_batches}: insertadas={ins} acumulado={total_insertadas} tiempo_s={dt:.2f}")
+        logger.info(
+            f"Lote {idx}/{total_batches}: insertadas={ins} "
+            f"acumulado={total_insertadas} tiempo_s={dt:.2f}"
+        )
 
-    # Activar versión + refrescar inventario_actual
-    marcar_version_activa(repo, id_version, total_insertadas)
-    logger.info(f"Version marcada Activa: id_version_inventario={id_version} filas_total={total_insertadas}")
-
-    # ===== FIX CLAVE =====
-    # No usar fetch_one para ejecutar un SELECT que modifica tablas,
-    # porque tu fetch_one no hace COMMIT si empieza por SELECT.
-    repo.execute("SELECT public.refresh_inventario_actual();", {})
-    logger.info("refresh_inventario_actual ejecutado y confirmado (COMMIT).")
-
-    logger.info(f"OK inventario. version={id_version} filas={total_insertadas}")
+    logger.info(f"OK inventario_actual. filas={total_insertadas}")
 
 
 if __name__ == "__main__":

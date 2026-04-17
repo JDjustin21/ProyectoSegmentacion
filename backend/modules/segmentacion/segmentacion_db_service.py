@@ -100,6 +100,106 @@ class SegmentacionDbService:
         )
 
         return referencias, cache_updated_at
+    
+    def listar_segmentaciones_candidatas_por_base(
+        self,
+        referencia_base: str,
+        referencia_sku_actual: str = ""
+    ) -> List[Dict[str, Any]]:
+        base = (referencia_base or "").strip()
+        actual = (referencia_sku_actual or "").strip()
+
+        if not base:
+            return []
+
+        sql = """
+            WITH last_seg_por_sku AS (
+                SELECT DISTINCT ON (s.referencia)
+                    s.id_segmentacion,
+                    s.referencia AS referencia_sku,
+                    s.referencia_base,
+                    s.color,
+                    s.codigo_color,
+                    s.descripcion,
+                    s.linea,
+                    s.fecha_creacion,
+                    s.estado_segmentacion
+                FROM segmentacion s
+                WHERE s.referencia_base = %(base)s
+                AND (%(actual)s = '' OR s.referencia <> %(actual)s)
+                ORDER BY s.referencia, s.fecha_creacion DESC
+            ),
+            det AS (
+                SELECT
+                    d.id_segmentacion,
+                    COUNT(DISTINCT CASE
+                        WHEN COALESCE(d.estado_detalle,'Activo') = 'Activo'
+                        AND COALESCE(d.cantidad,0) > 0
+                        THEN d.llave_naval
+                    END) AS tiendas_segmentadas,
+                    COALESCE(SUM(CASE
+                        WHEN COALESCE(d.estado_detalle,'Activo') = 'Activo'
+                        AND COALESCE(d.cantidad,0) > 0
+                        THEN d.cantidad
+                        ELSE 0
+                    END), 0) AS total_unidades
+                FROM segmentacion_detalle d
+                GROUP BY d.id_segmentacion
+            )
+            SELECT
+                l.id_segmentacion,
+                l.referencia_sku,
+                l.referencia_base,
+                l.color,
+                l.codigo_color,
+                l.descripcion,
+                l.linea,
+                l.fecha_creacion,
+                l.estado_segmentacion,
+                COALESCE(det.tiendas_segmentadas, 0) AS tiendas_segmentadas,
+                COALESCE(det.total_unidades, 0) AS total_unidades
+            FROM last_seg_por_sku l
+            LEFT JOIN det ON det.id_segmentacion = l.id_segmentacion
+            ORDER BY l.fecha_creacion DESC;
+        """
+        return self._repo.fetch_all(sql, {"base": base, "actual": actual})
+    
+    def obtener_segmentacion_para_copiar(self, id_segmentacion: int) -> Dict[str, Any]:
+        sql_head = """
+            SELECT
+                id_segmentacion,
+                referencia AS referencia_sku,
+                referencia_base,
+                color,
+                codigo_color,
+                descripcion,
+                linea,
+                fecha_creacion,
+                estado_segmentacion
+            FROM segmentacion
+            WHERE id_segmentacion = %(id)s
+            LIMIT 1;
+        """
+        head = self._repo.fetch_one(sql_head, {"id": id_segmentacion})
+        if not head:
+            return {"existe": False, "segmentacion": None}
+
+        sql_det = """
+            SELECT
+                llave_naval,
+                talla,
+                cantidad,
+                codigo_barras,
+                estado_detalle
+            FROM segmentacion_detalle
+            WHERE id_segmentacion = %(id)s
+            AND COALESCE(estado_detalle, 'Activo') = 'Activo'
+            AND COALESCE(cantidad, 0) > 0;
+        """
+        detalle = self._repo.fetch_all(sql_det, {"id": id_segmentacion})
+
+        head["detalle"] = detalle
+        return {"existe": True, "segmentacion": head}
 
     def obtener_referencia_detalle_snapshot(
         self,

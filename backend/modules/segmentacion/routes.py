@@ -482,6 +482,37 @@ def _rebuild_index_if_needed(force: bool = False, ttl_seconds: int = 60) -> None
     _IMAGES_INDEX["by_key"] = by_key
     _IMAGES_INDEX["ts"] = now
 
+@segmentacion_bp.get("/api/segmentaciones/candidatas")
+@login_required
+def api_segmentaciones_candidatas():
+    referencia_base = (request.args.get("referenciaBase") or "").strip()
+    referencia_sku_actual = (request.args.get("referenciaSkuActual") or "").strip()
+
+    if not referencia_base:
+        return jsonify({"ok": True, "data": []})
+
+    repo = _pg_repo()
+    svc = _svc_pg(repo)
+
+    rows = svc.listar_segmentaciones_candidatas_por_base(
+        referencia_base=referencia_base,
+        referencia_sku_actual=referencia_sku_actual,
+    )
+    return jsonify({"ok": True, "data": rows})
+
+
+@segmentacion_bp.get("/api/segmentaciones/copia")
+@login_required
+def api_segmentacion_para_copiar():
+    raw_id = (request.args.get("idSegmentacion") or "").strip()
+    if not raw_id:
+        return jsonify({"ok": False, "error": "Falta query param: idSegmentacion"}), 400
+
+    repo = _pg_repo()
+    svc = _svc_pg(repo)
+
+    result = svc.obtener_segmentacion_para_copiar(int(raw_id))
+    return jsonify({"ok": True, "data": result})
 
 @segmentacion_bp.get("/api/imagenes/referencia")
 @login_required

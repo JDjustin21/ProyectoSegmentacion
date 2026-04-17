@@ -220,9 +220,57 @@
 
         <div class="detalle-filtro-acciones">
 
-        <button type="button" class="btn btn-outline-light btn-sm" id="btnDetallePresetSku">
-          Predeterminado
-        </button>
+        <div style="position:relative; display:inline-block;">
+          <button type="button" class="btn btn-outline-light btn-sm" id="btnDetallePresetSku">
+            Predeterminado ▾
+          </button>
+          <div id="detallePresetMenu" style="
+            display:none;
+            position:absolute;
+            top:calc(100% + 4px);
+            left:0;
+            background:var(--bs-body-bg, #2b2b2b);
+            border:1px solid rgba(255,255,255,0.2);
+            border-radius:8px;
+            box-shadow:0 4px 16px rgba(0,0,0,.25);
+            min-width:220px;
+            z-index:9999;
+            overflow:hidden;
+          ">
+            <div data-preset="basico" class="preset-menu-item">
+              <div style="font-size:13px; font-weight:500;">Básico</div>
+              <div style="font-size:11px; opacity:0.65;">Todas las tallas con cantidad 1</div>
+            </div>
+            <div data-preset="curva" class="preset-menu-item">
+              <div style="font-size:13px; font-weight:500;">Curva</div>
+              <div style="font-size:11px; opacity:0.65;">M y L = 2 · resto = 1</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="detalleCopySegmentacionWrap" style="display:none; position:relative;">
+          <button
+            type="button"
+            class="btn btn-outline-light btn-sm"
+            id="btnDetalleCopiarSegmentacion">
+            Copiar desde ▾
+          </button>
+
+          <div id="detalleCopyMenu" style="
+            display:none;
+            position:absolute;
+            top:calc(100% + 4px);
+            left:0;
+            background:var(--bs-body-bg, #2b2b2b);
+            border:1px solid rgba(255,255,255,0.2);
+            border-radius:8px;
+            box-shadow:0 4px 16px rgba(0,0,0,.25);
+            min-width:320px;
+            z-index:9999;
+            overflow:hidden;
+          ">
+          </div>
+        </div>
 
         <button type="button" class="btn btn-outline-light btn-sm" id="btnDetalleActivarTodas">
           Activar todas

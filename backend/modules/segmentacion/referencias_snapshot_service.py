@@ -305,11 +305,20 @@ class ReferenciasSnapshotService:
     def _cargar_staging(self, refresh_id: str, rows: List[Dict[str, Any]]) -> None:
         """
         Inserta el lote completo en staging.
-        Antes limpia residuos del mismo refresh_id por seguridad.
+
+        Regla de negocio:
+        - referencias_snapshot_staging NO conserva histórico.
+        - En cada refresh se reemplaza completamente el contenido de staging.
+        - La historia liviana del proceso queda en referencias_refresh_control.
         """
+        if not rows:
+            raise RuntimeError("No se recibieron filas para cargar en referencias_snapshot_staging.")
+
+        # Limpiar completamente staging antes de cargar el lote actual.
+        # Esto evita acumulación histórica innecesaria por refresh_id.
         self._repo.execute(
-            "DELETE FROM public.referencias_snapshot_staging WHERE refresh_id = %(refresh_id)s;",
-            {"refresh_id": refresh_id},
+            "TRUNCATE TABLE public.referencias_snapshot_staging;",
+            {},
         )
 
         sql = """

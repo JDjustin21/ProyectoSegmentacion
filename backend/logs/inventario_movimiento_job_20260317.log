@@ -1,5 +1,0 @@
-2026-03-17 08:00:03,464 | INFO | Logger iniciado. Archivo: C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\inventario_movimiento_job_20260317.log
-2026-03-17 08:00:03,539 | INFO | Version creada (Inactiva): id_version_movimiento=22
-2026-03-17 08:00:04,238 | INFO | Universo referencias: 2151
-2026-03-17 08:00:04,238 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=120
-2026-03-17 08:00:04,238 | INFO | Lote 1/11: refs=200 -> llamando API...

@@ -21,6 +21,8 @@
   const API_ULTIMA = "/segmentacion/api/segmentaciones/ultima";
   const API_GUARDAR = "/segmentacion/api/segmentaciones";
   const API_METRICAS = "/segmentacion/api/metricas";
+  const API_CANDIDATAS = "/segmentacion/api/segmentaciones/candidatas";
+  const API_COPIA = "/segmentacion/api/segmentaciones/copia";
 
   // =========================
   // 2) Helpers puros
@@ -34,26 +36,15 @@
 
     const arr = Array.isArray(tallas) ? tallas.map(norm).filter(Boolean) : [];
 
-    // separa: conocidas vs desconocidas
-    const known = [];
-    const unknown = [];
+    const validas = arr
+      .map(t => t.toUpperCase())
+      .filter(t => baseOrder.includes(t));
 
-    arr.forEach(t => {
-      const up = t.toUpperCase();
-      if (baseOrder.includes(up)) known.push(up);
-      else unknown.push(t); // conserva original por si viene "ME", "2XL", etc.
-    });
+    const unicas = [...new Set(validas)];
 
-    // ordena conocidas según baseOrder
-    known.sort((a, b) => baseOrder.indexOf(a) - baseOrder.indexOf(b));
+    unicas.sort((a, b) => baseOrder.indexOf(a) - baseOrder.indexOf(b));
 
-    // desconocidas al final, orden alfabético
-    const unknownSorted = unknown
-      .map(norm)
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b));
-
-    return [...known, ...unknownSorted];
+    return unicas;
   }
 
   function isoNow() {
@@ -201,6 +192,9 @@
       btnActivarTodas: document.getElementById("btnDetalleActivarTodas"),
       btnDesactivarTodas: document.getElementById("btnDetalleDesactivarTodas"),
       btnGuardar: document.getElementById("btnDetalleGuardar"),
+      btnCopiarSegmentacion: document.getElementById("btnDetalleCopiarSegmentacion"),
+      copyMenuEl: document.getElementById("detalleCopyMenu"),
+      copyWrapEl: document.getElementById("detalleCopySegmentacionWrap"),
 
       loadingEl: document.getElementById("detalleLoading"),
       errorEl: document.getElementById("detalleError"),
@@ -246,6 +240,7 @@
     tiendas: [],
     cantidades: {},
     activoPorTienda: {},
+    segmentacionesCandidatas: [],
     renderSeq: 0,
   };
 
@@ -813,6 +808,152 @@
     });
   }
 
+  async function cargarSegmentacionesCandidatas() {
+    const referenciaBase = norm(state.ref.referenciaBase);
+    const referenciaSkuActual = norm(state.ref.referenciaSku);
+
+    console.log("[COPIAR] referenciaBase:", referenciaBase);
+    console.log("[COPIAR] referenciaSkuActual:", referenciaSkuActual);
+
+    if (!referenciaBase) {
+      state.segmentacionesCandidatas = [];
+      console.log("[COPIAR] Sin referenciaBase, no hay candidatas.");
+      return;
+    }
+
+    const q = buildQuery({
+      referenciaBase,
+      referenciaSkuActual,
+    });
+
+    const url = `${API_CANDIDATAS}?${q}`;
+  console.log("[COPIAR] GET candidatas:", url);
+
+  const json = await fetchJson(url);
+  console.log("[COPIAR] respuesta candidatas:", json);
+
+  if (!json.ok) {
+    state.segmentacionesCandidatas = [];
+    console.log("[COPIAR] json.ok = false");
+    return;
+  }
+
+  state.segmentacionesCandidatas = Array.isArray(json.data) ? json.data : [];
+  console.log("[COPIAR] candidatas finales:", state.segmentacionesCandidatas);
+}
+
+  function renderSegmentacionesCandidatas(dom) {
+    const wrapEl = dom.copyWrapEl;
+    const menuEl = dom.copyMenuEl;
+    const btnEl = dom.btnCopiarSegmentacion;
+
+    if (!wrapEl || !menuEl || !btnEl) return;
+
+    const items = Array.isArray(state.segmentacionesCandidatas)
+      ? state.segmentacionesCandidatas
+      : [];
+
+    menuEl.innerHTML = "";
+
+    if (items.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "copy-menu-item";
+      empty.style.padding = "10px 12px";
+      empty.style.fontSize = "12px";
+      empty.style.opacity = "0.7";
+      empty.textContent = "No hay segmentaciones disponibles para copiar";
+      menuEl.appendChild(empty);
+
+      wrapEl.style.display = "block";
+      btnEl.disabled = true;
+      return;
+    }
+
+    items.forEach(item => {
+      const itemEl = document.createElement("div");
+      itemEl.className = "preset-menu-item copy-menu-item";
+      itemEl.dataset.idSegmentacion = String(item.id_segmentacion || "");
+
+      itemEl.innerHTML = `
+        <div style="font-size:13px; font-weight:500;">
+          ${norm(item.referencia_sku || item.referenciaSku) || "Sin referencia"}
+        </div>
+        <div style="font-size:11px; opacity:0.7;">
+          ${[
+            norm(item.color),
+            item.tiendas_segmentadas != null ? `${item.tiendas_segmentadas} tiendas` : "",
+            item.total_unidades != null ? `${item.total_unidades} und` : ""
+          ].filter(Boolean).join(" • ")}
+        </div>
+      `;
+
+      menuEl.appendChild(itemEl);
+    });
+
+    wrapEl.style.display = "block";
+    btnEl.disabled = false;
+  }
+
+  async function aplicarCopiaSegmentacion(idSegmentacion, dom) {
+    const q = buildQuery({ idSegmentacion });
+    const json = await fetchJson(`${API_COPIA}?${q}`);
+
+    if (!json.ok) {
+      throw new Error(json.error || "No fue posible cargar la segmentación a copiar.");
+    }
+
+    const data = json.data || {};
+    const seg = data.segmentacion || null;
+    const detalle = Array.isArray(seg?.detalle) ? seg.detalle : [];
+
+    if (!seg) {
+      throw new Error("La segmentación seleccionada no existe o no tiene detalle.");
+    }
+
+    const llavesTiendasActuales = new Set(
+      (Array.isArray(state.tiendas) ? state.tiendas : [])
+        .map(t => norm(t.llave_naval))
+        .filter(Boolean)
+    );
+
+    const tallasValidas = new Set(
+      (Array.isArray(state.ref.tallasFinal) ? state.ref.tallasFinal : [])
+        .map(t => norm(t).toUpperCase())
+        .filter(Boolean)
+    );
+
+    // Reinicia solo lo editable del formulario actual
+    state.cantidades = {};
+    state.activoPorTienda = {};
+
+    detalle.forEach(d => {
+      const llave = norm(d.llave_naval);
+      const talla = norm(d.talla).toUpperCase();
+      const cantidad = Number(d.cantidad || 0);
+
+      if (!llave || !talla || cantidad <= 0) return;
+      if (!llavesTiendasActuales.has(llave)) return;
+      if (!tallasValidas.has(talla)) return;
+
+      if (!state.cantidades[llave]) {
+        state.cantidades[llave] = {};
+      }
+
+      state.cantidades[llave][talla] = cantidad;
+      state.activoPorTienda[llave] = true;
+    });
+
+    renderTiendas(dom);
+    updateFooterStats(dom);
+
+    if (dom.footerInfoEl) {
+      const refOrigen = norm(seg.referencia_sku || seg.referenciaSku || "");
+      dom.footerInfoEl.textContent = refOrigen
+        ? `Segmentación copiada desde ${refOrigen}`
+        : "Segmentación copiada correctamente";
+    }
+  }
+
   // =========================
   // 10) Preset y limpiar
   // =========================
@@ -828,7 +969,9 @@
     if (dom.filtroClasificacion) dom.filtroClasificacion.value = "";
   }
 
-  function aplicarPresetDesdeSku() {
+  function aplicarPresetDesdeSku(modo) {
+    // modo: 'basico' (todas = 1) | 'curva' (M y L = 2, resto = 1)
+    console.log('Aplicando preset:', modo);  // Verifica que el valor de `modo` es correcto
     state.tiendas.forEach(t => {
       const llave = norm(t.llave_naval);
       if (!llave) return;
@@ -840,7 +983,7 @@
       state.ref.tallasFinal.forEach(talla => {
         const keyTalla = norm(talla).toUpperCase();
         let qty = 1; // default preset
-        if (keyTalla === "M" || keyTalla === "L") {
+        if (modo === 'curva' && (keyTalla === 'M' || keyTalla === 'L')) {
           qty = 2;
         }
         state.cantidades[llave][keyTalla] = qty;
@@ -1012,6 +1155,7 @@
     state.tiendas = [];
     state.cantidades = {};
     state.activoPorTienda = {};
+    state.segmentacionesCandidatas = [];
 
 
     // Header
@@ -1069,9 +1213,22 @@
         cargarTiendas(dom),
         cargarMetricas(dom),
         cargarUltimaSegmentacion(),
+        cargarSegmentacionesCandidatas(),
       ]);
 
       renderTiendas(dom);
+      console.log("DOM copia:", {
+        wrap: !!dom.copyWrapEl,
+        select: !!dom.selectSegmentacionCandidata,
+        btn: !!dom.btnCopiarSegmentacion
+      });
+
+      console.log("Candidatas:", state.segmentacionesCandidatas);
+
+      if (dom.copyWrapEl) {
+        dom.copyWrapEl.style.display = "block";
+      }
+      renderSegmentacionesCandidatas(dom);
       calcularYActualizarMetricas(dom);
 
       // 5) actualizar métricas en header (CPD total, venta total)
@@ -1213,9 +1370,24 @@
       }
     });
 
-    dom.btnPresetSku?.addEventListener("click", () => {
-      aplicarPresetDesdeSku();
+    const menu = document.getElementById('detallePresetMenu');
+    dom.btnPresetSku?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    });
+
+    menu?.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-preset]');
+      if (!item) return;
+      menu.style.display = 'none';
+      aplicarPresetDesdeSku(item.dataset.preset);
       renderTiendas(dom);
+    });
+
+    dom.modalEl?.addEventListener('click', (e) => {
+      if (!dom.btnPresetSku.contains(e.target)) {
+        menu.style.display = 'none';
+      }
     });
 
     dom.btnActivarTodas?.addEventListener("click", () => {
@@ -1226,6 +1398,43 @@
     dom.btnDesactivarTodas?.addEventListener("click", () => {
       setAllStoresActive(false, { clearQty: true });
       renderTiendas(dom);
+    });
+
+    dom.btnCopiarSegmentacion?.addEventListener("click", (e) => {
+      e.stopPropagation();
+
+      const menuEl = dom.copyMenuEl;
+      if (!menuEl) return;
+
+      menuEl.style.display = menuEl.style.display === "block" ? "none" : "block";
+    });
+
+    dom.copyMenuEl?.addEventListener("click", async (e) => {
+      const item = e.target.closest(".copy-menu-item");
+      if (!item) return;
+
+      const idSegmentacion = norm(item.dataset.idSegmentacion);
+      if (!idSegmentacion) return;
+
+      dom.copyMenuEl.style.display = "none";
+      setError(dom, "");
+      setLoading(dom, true);
+
+      try {
+        await aplicarCopiaSegmentacion(idSegmentacion, dom);
+      } catch (err) {
+        setError(dom, err?.message || "Error copiando segmentación.");
+      } finally {
+        setLoading(dom, false);
+      }
+    });
+
+    dom.modalEl?.addEventListener("click", (e) => {
+      if (!dom.btnCopiarSegmentacion?.contains(e.target) && !dom.copyMenuEl?.contains(e.target)) {
+        if (dom.copyMenuEl) {
+          dom.copyMenuEl.style.display = "none";
+        }
+      }
     });
 
     dom.btnGuardar?.addEventListener("click", async () => {
