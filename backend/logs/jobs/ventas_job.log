@@ -1,8 +1,8 @@
-[23/04/2026  7:50:03.34] INICIO LOG ventas_job
-[23/04/2026  7:50:03.45] INICIO ventas_job.py 
+[24/04/2026 11:36:38.22] INICIO LOG ventas_job
+[24/04/2026 11:36:38.30] INICIO ventas_job.py 
 POSTGRES_DSN=dbname=Creytex_Segmentacion_V1 user=postgres password=postgres host=localhost port=5432 
 VENTAS_SOURCE_FILE=\\10.10.20.5\creytex\GESTION COMERCIAL MARCA PROPIA\LOGISTICA MARCA PROPIA\CLIENTES\CUBO DE VENTAS\BSPlanaVentas2026.txt 
 VENTAS_ENCODING=cp1252 
 VENTAS_BATCH_SIZE=5000 
-OK: nueva versión activa id_version_ventas=33, filas_staging=146818, filas_final_insertadas~=2361
-[23/04/2026  7:52:09.53] OK ventas_job log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\ventas_job.log 
+NO CHANGES: la versión activa ya corresponde a este archivo. ventas_staging_raw fue limpiada.
+[24/04/2026 11:36:49.06] OK ventas_job log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\ventas_job.log 

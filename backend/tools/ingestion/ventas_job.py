@@ -5,7 +5,6 @@ import argparse
 import hashlib
 import os
 import sys
-from datetime import datetime
 from typing import List, Tuple, Optional
 
 import psycopg2
@@ -36,11 +35,10 @@ def norm_header_cell(v: str) -> str:
     - uppercase
     """
     s = (v or "")
-    s = s.replace("\ufeff", "")      # BOM unicode
+    s = s.replace("\ufeff", "")
     s = s.replace("\ufffe", "")
     s = s.strip().strip('"').strip("'")
     return s.upper()
-
 
 
 def parse_tsv_lines(
@@ -49,15 +47,26 @@ def parse_tsv_lines(
     delimiter: str,
     expected_headers: List[str],
 ) -> Tuple[List[str], int]:
+    """
+    Busca el encabezado real del archivo dentro de las primeras 50 líneas.
 
+    Retorna:
+    - headers normalizados
+    - número de línea donde está el encabezado
+
+    Esto evita asumir que el header siempre está en la primera línea.
+    """
     expected_norm = [norm_header_cell(x) for x in expected_headers]
     expected_set = set(expected_norm)
 
-    # pistas para detectar header real
-    must_have = {norm_header_cell("ORIGEN"), norm_header_cell("EAN"), norm_header_cell("FECHA_MVTO")}
+    must_have = {
+        norm_header_cell("ORIGEN"),
+        norm_header_cell("EAN"),
+        norm_header_cell("FECHA_MVTO"),
+    }
 
     with open(file_path, "r", encoding=encoding, errors="replace") as f:
-        for line_idx in range(1, 51):  # busca en las primeras 50 líneas
+        for line_idx in range(1, 51):
             line = f.readline()
             if not line:
                 break
@@ -65,22 +74,22 @@ def parse_tsv_lines(
             raw_parts = line.rstrip("\n\r").split(delimiter)
             raw_headers = [norm_header_cell(x) for x in raw_parts if x is not None]
 
-            # descarta líneas que no parecen header
             if len(raw_headers) < 5:
                 continue
 
             got_set = set(raw_headers)
-
-            # regla: debe contener estas 3, o al menos “muchas” columnas esperadas
             hits = len(expected_set.intersection(got_set))
+
             if must_have.issubset(got_set) or hits >= 10:
                 missing = sorted(list(expected_set - got_set))
                 if missing:
-                    raise ValueError(f"Header encontrado en línea {line_idx}, pero faltan columnas: {missing}")
-                return raw_headers, len(raw_headers)
+                    raise ValueError(
+                        f"Header encontrado en línea {line_idx}, pero faltan columnas: {missing}"
+                    )
+
+                return raw_headers, line_idx
 
     raise ValueError("No se encontró un encabezado válido en las primeras 50 líneas del archivo.")
-
 
 
 def build_header_index(headers_in_file: List[str]) -> dict:
@@ -96,13 +105,30 @@ def build_header_index(headers_in_file: List[str]) -> dict:
 
 
 def safe_get(parts: List[str], idx: Optional[int]) -> str:
+    """
+    Obtiene una celda de forma segura.
+
+    Si la columna no existe o está fuera del rango, retorna cadena vacía.
+    También elimina caracteres NUL porque PostgreSQL no los permite.
+    """
     if idx is None:
         return ""
     if idx < 0 or idx >= len(parts):
         return ""
+
     v = (parts[idx] or "").strip()
-    # Postgres NO permite NUL
     return v.replace("\x00", "")
+
+
+def truncate_ventas_staging_raw(cur) -> None:
+    """
+    Limpia staging completo.
+
+    No se usa CASCADE para evitar borrar accidentalmente datos dependientes.
+    Si este TRUNCATE falla por dependencias, es mejor enterarse y revisar
+    antes de ejecutar una limpieza agresiva.
+    """
+    cur.execute("TRUNCATE TABLE public.ventas_staging_raw RESTART IDENTITY")
 
 
 def get_active_version_hash(cur) -> Optional[str]:
@@ -119,9 +145,16 @@ def get_active_version_hash(cur) -> Optional[str]:
     return row[0] if row else None
 
 
-def insert_new_version(cur, nombre_archivo: str, ruta_origen: str, hash_archivo: str, id_usuario: Optional[int]) -> int:
+def insert_new_version(
+    cur,
+    nombre_archivo: str,
+    ruta_origen: str,
+    hash_archivo: str,
+    id_usuario: Optional[int],
+) -> int:
     """
-    Inserta versión nueva en estado Inactiva. Devuelve id_version_ventas.
+    Inserta versión nueva en estado Inactiva.
+    Devuelve id_version_ventas.
     """
     cur.execute("""
         INSERT INTO public.ventas_version_archivo
@@ -130,6 +163,7 @@ def insert_new_version(cur, nombre_archivo: str, ruta_origen: str, hash_archivo:
             (%s, %s, %s, 'Inactiva', %s)
         RETURNING id_version_ventas
     """, (nombre_archivo, ruta_origen, hash_archivo, id_usuario))
+
     return int(cur.fetchone()[0])
 
 
@@ -168,20 +202,18 @@ def load_staging_raw(
     encoding: str,
     delimiter: str,
     headers_in_file: List[str],
+    header_line_no: int,
     id_version_ventas: int,
     batch_size: int,
 ) -> int:
     """
     Inserta filas en ventas_staging_raw con batch.
-    Retorna total de filas (sin header).
+    Retorna total de filas de datos, sin contar el header.
     """
     idx = build_header_index(headers_in_file)
 
-    # Mapeo por nombre para staging_raw (debe coincidir con tu header real)
     col = lambda name: idx.get(norm_header_cell(name))
 
-    # Lista ordenada de columnas staging (sin id_version_ventas/numero_fila)
-    # (Nombres entendibles, 1 a 1 con tu tabla ventas_staging_raw)
     staging_cols = [
         ("origen", col("ORIGEN")),
         ("cod_dependencia", col("COD_DEPENDENCIA")),
@@ -265,9 +297,13 @@ def load_staging_raw(
     batch: List[Tuple] = []
 
     with open(file_path, "r", encoding=encoding, errors="replace") as f:
-        _ = f.readline()  # consumir header
+        for _ in range(header_line_no):
+            f.readline()
 
         for line_no, line in enumerate(f, start=1):
+            if not line.strip():
+                continue
+
             parts = line.rstrip("\n\r").split(delimiter)
 
             row_values = []
@@ -282,11 +318,12 @@ def load_staging_raw(
                     psycopg2.extras.execute_values(cur, insert_sql, batch, page_size=batch_size)
                     batch.clear()
                 except Exception as ex:
-                    # Diagnóstico: última fila que íbamos a insertar
                     last = batch[-1] if batch else None
-                    # last = (id_version, line_no, *cols)
                     bad_line_no = last[1] if last else None
-                    print(f"[INGEST][ERROR] Falló INSERT staging en line_no={bad_line_no}: {ex}", file=sys.stderr)
+                    print(
+                        f"[INGEST][ERROR] Falló INSERT staging en line_no={bad_line_no}: {ex}",
+                        file=sys.stderr,
+                    )
                     raise
 
     if batch:
@@ -295,16 +332,19 @@ def load_staging_raw(
         except Exception as ex:
             last = batch[-1] if batch else None
             bad_line_no = last[1] if last else None
-            print(f"[INGEST][ERROR] Falló INSERT staging (final) en line_no={bad_line_no}: {ex}", file=sys.stderr)
+            print(
+                f"[INGEST][ERROR] Falló INSERT staging final en line_no={bad_line_no}: {ex}",
+                file=sys.stderr,
+            )
             raise
 
-        return total_rows
+    return total_rows
 
 
 def stage_to_final(cur, id_version_ventas: int) -> int:
     """
     Convierte staging_raw -> ventas_movimientos.
-    Retorna cantidad insertada (aproximación por rowcount de cursor).
+    Retorna cantidad insertada según rowcount del cursor.
     """
     cur.execute("""
         INSERT INTO public.ventas_movimientos (
@@ -347,11 +387,14 @@ def stage_to_final(cur, id_version_ventas: int) -> int:
                 WHEN NULLIF(trim(sr.fecha_mvto), '') IS NULL THEN NULL
                 ELSE to_date(trim(sr.fecha_mvto), 'DD/MM/YYYY')
             END AS fecha_movimiento,
+
             NULLIF(trim(sr.desc_movimiento), '') AS descripcion_movimiento,
+
             CASE
                 WHEN NULLIF(trim(sr.signo), '') IS NULL THEN NULL
                 ELSE left(trim(sr.signo), 1)
             END AS signo,
+
             COALESCE(NULLIF(trim(sr.cantidad), '')::int, 0) AS cantidad,
 
             NULLIF(trim(sr.llave_naval), '') AS llave_naval,
@@ -404,19 +447,30 @@ def stage_to_final(cur, id_version_ventas: int) -> int:
         ON CONFLICT (hash_fila) DO NOTHING
     """, (id_version_ventas,))
 
-    # rowcount en INSERT puede ser aproximado según driver/plan, pero sirve como indicador
     return int(cur.rowcount) if cur.rowcount is not None else 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Carga TXT de ventas (versionado + staging + final).")
-    parser.add_argument("--pg-dsn", required=True, help="DSN de Postgres (ej: dbname=... user=... host=... port=...)")
-    parser.add_argument("--source-file", required=True, help="Ruta del TXT (preferible UNC).")
-    parser.add_argument("--encoding", default="cp1252", help="Encoding del TXT (default cp1252).")
-    parser.add_argument("--delimiter", default="\t", help="Delimitador (default TAB).")
-    parser.add_argument("--batch-size", type=int, default=5000, help="Tamaño de lote para inserción staging.")
-    parser.add_argument("--hash-chunk-size", type=int, default=1024 * 1024, help="Chunk size para hash (bytes).")
-    parser.add_argument("--user-id", type=int, default=None, help="id_usuario que ejecuta la carga (opcional).")
+    parser = argparse.ArgumentParser(
+        description="Carga TXT de ventas usando versionado, staging temporal y tabla final."
+    )
+    parser.add_argument("--pg-dsn", required=True, help="DSN de Postgres.")
+    parser.add_argument("--source-file", required=True, help="Ruta del TXT.")
+    parser.add_argument("--encoding", default="cp1252", help="Encoding del TXT.")
+    parser.add_argument("--delimiter", default="\t", help="Delimitador.")
+    parser.add_argument("--batch-size", type=int, default=5000, help="Tamaño de lote.")
+    parser.add_argument(
+        "--hash-chunk-size",
+        type=int,
+        default=1024 * 1024,
+        help="Chunk size para hash en bytes.",
+    )
+    parser.add_argument(
+        "--user-id",
+        type=int,
+        default=None,
+        help="id_usuario que ejecuta la carga.",
+    )
 
     args = parser.parse_args()
 
@@ -426,17 +480,22 @@ def main() -> int:
         return 2
 
     expected_headers = [
-        "ORIGEN","COD_DEPENDENCIA","DEP_DESTINO","DESC_DEP_DESTINO","PLU","EAN","FECHA_MVTO","DESC_MOVIMIENTO","SIGNO",
-        "CANTIDAD","FECHA_PROD","REPROCESO_VTAS","DEPENDENCIA","COD_BODEGA","RAZON_SOCIAL","TIPO_DEPENDENCIA",
-        "GTIN_ALMACEN","COD_SIESA","DESC_DEPENDENCIA","CLIMA","DEPARTAMENTO","CIUDAD","ZONA","ZONA_EX","LLAVE_DEP2",
-        "ESTADO_TIENDA","LLAVE_DEP","REFERENCIA","DESC_ITEM","COD_COLOR","COLOR","TALLA","LINEA_GEN","LINEA_DETLL",
-        "ESTILO_ITEM","GRUPO","LINEA","MARCA","TIPO_DE_NEGOCIO","CUENTO","TIPO_PORTAFOLIO_MOD","FCH_ACT_PORTAFOLIO",
-        "ESTADO_SKU_MOD","FCH_ACT_SKU","PERFIL_PRENDA","CAMBIO_PORTAFOLIO?","PVP","PVP LISTA","PVP HIST",
-        "PVP HIST LISTA","VENTA $ PVP LISTA","VENTA $ PVP HIST LISTA","DESC_GRUPO","MODELO","LINEA_MY","LLAVE_NAVAL",
-        "ESTADO_LINEA","Año","Mes","TIPO_PORTAFOLIO_MOD_2"
+        "ORIGEN", "COD_DEPENDENCIA", "DEP_DESTINO", "DESC_DEP_DESTINO", "PLU", "EAN",
+        "FECHA_MVTO", "DESC_MOVIMIENTO", "SIGNO", "CANTIDAD", "FECHA_PROD",
+        "REPROCESO_VTAS", "DEPENDENCIA", "COD_BODEGA", "RAZON_SOCIAL",
+        "TIPO_DEPENDENCIA", "GTIN_ALMACEN", "COD_SIESA", "DESC_DEPENDENCIA",
+        "CLIMA", "DEPARTAMENTO", "CIUDAD", "ZONA", "ZONA_EX", "LLAVE_DEP2",
+        "ESTADO_TIENDA", "LLAVE_DEP", "REFERENCIA", "DESC_ITEM", "COD_COLOR",
+        "COLOR", "TALLA", "LINEA_GEN", "LINEA_DETLL", "ESTILO_ITEM", "GRUPO",
+        "LINEA", "MARCA", "TIPO_DE_NEGOCIO", "CUENTO", "TIPO_PORTAFOLIO_MOD",
+        "FCH_ACT_PORTAFOLIO", "ESTADO_SKU_MOD", "FCH_ACT_SKU", "PERFIL_PRENDA",
+        "CAMBIO_PORTAFOLIO?", "PVP", "PVP LISTA", "PVP HIST", "PVP HIST LISTA",
+        "VENTA $ PVP LISTA", "VENTA $ PVP HIST LISTA", "DESC_GRUPO", "MODELO",
+        "LINEA_MY", "LLAVE_NAVAL", "ESTADO_LINEA", "Año", "Mes",
+        "TIPO_PORTAFOLIO_MOD_2",
     ]
 
-    headers_in_file, _ = parse_tsv_lines(
+    headers_in_file, header_line_no = parse_tsv_lines(
         file_path=source_file,
         encoding=args.encoding,
         delimiter=args.delimiter,
@@ -454,12 +513,25 @@ def main() -> int:
     try:
         with conn.cursor() as cur:
             active_hash = get_active_version_hash(cur)
+
             if active_hash and active_hash == file_hash:
-                print("NO CHANGES: la versión activa ya corresponde a este archivo (hash igual).")
-                conn.rollback()
+                truncate_ventas_staging_raw(cur)
+                conn.commit()
+                print(
+                    "NO CHANGES: la versión activa ya corresponde a este archivo. "
+                    "ventas_staging_raw fue limpiada."
+                )
                 return 0
 
-            new_id = insert_new_version(cur, nombre_archivo, ruta_origen, file_hash, args.user_id)
+            truncate_ventas_staging_raw(cur)
+
+            new_id = insert_new_version(
+                cur=cur,
+                nombre_archivo=nombre_archivo,
+                ruta_origen=ruta_origen,
+                hash_archivo=file_hash,
+                id_usuario=args.user_id,
+            )
 
             filas = load_staging_raw(
                 cur=cur,
@@ -467,6 +539,7 @@ def main() -> int:
                 encoding=args.encoding,
                 delimiter=args.delimiter,
                 headers_in_file=headers_in_file,
+                header_line_no=header_line_no,
                 id_version_ventas=new_id,
                 batch_size=args.batch_size,
             )
@@ -477,14 +550,24 @@ def main() -> int:
 
             activate_version(cur, new_id)
 
+            truncate_ventas_staging_raw(cur)
+
             conn.commit()
-            print(f"OK: nueva versión activa id_version_ventas={new_id}, filas_staging={filas}, filas_final_insertadas~={inserted_final}")
+
+            print(
+                "OK: nueva versión activa "
+                f"id_version_ventas={new_id}, "
+                f"filas_leidas={filas}, "
+                f"filas_final_insertadas~={inserted_final}, "
+                "ventas_staging_raw_limpiada=SI"
+            )
             return 0
 
     except Exception as ex:
         conn.rollback()
         print(f"ERROR: {ex}", file=sys.stderr)
         return 1
+
     finally:
         conn.close()
 

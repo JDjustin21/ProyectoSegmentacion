@@ -1119,7 +1119,11 @@ class SegmentacionDbService:
                 s.id_segmentacion,
                 s.id_usuario,
                 s.id_version_tiendas,
-                s.estado_segmentacion,
+                CASE
+                    WHEN COALESCE(d.estado_detalle, 'Activo') = 'Inactivo'
+                        THEN 'Inactivo'
+                    ELSE s.estado_segmentacion
+                END AS estado_segmentacion,
 
                 s.referencia AS referencia_sku,
                 s.referencia_base,
@@ -1185,8 +1189,11 @@ class SegmentacionDbService:
                 s.estado_sku,
                 s.cuento,
                 s.tipo_inventario,
-                s.estado_segmentacion,
-
+                CASE
+                    WHEN COALESCE(d.estado_detalle, 'Activo') = 'Inactivo'
+                        THEN 'Inactivo'
+                    ELSE s.estado_segmentacion
+                END AS estado_segmentacion,
                 d.llave_naval,
                 d.talla,
                 d.cantidad,
