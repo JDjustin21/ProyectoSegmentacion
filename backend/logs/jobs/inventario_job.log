@@ -1,13 +1,13 @@
-[07/04/2026  7:05:02.16] INICIO LOG inventario_job
-[07/04/2026  7:05:02.17] INV_BATCH_SIZE=200 
-[07/04/2026  7:05:02.18] INV_API_TIMEOUT=180 
-[07/04/2026  7:05:02.18] INICIO python -m backend.tools.ingestion.inventario_job 
+[23/04/2026  7:05:05.72] INICIO LOG inventario_job
+[23/04/2026  7:05:05.75] INV_BATCH_SIZE=200 
+[23/04/2026  7:05:05.75] INV_API_TIMEOUT=180 
+[23/04/2026  7:05:05.76] INICIO python -m backend.tools.ingestion.inventario_job 
 python-dotenv could not parse statement starting at line 1
-2026-04-07 07:05:03,127 | INFO | Logger iniciado en consola/stdout.
-2026-04-07 07:05:03,289 | INFO | Version creada (Inactiva): id_version_inventario=26
-2026-04-07 07:05:03,626 | INFO | Universo referencias: 1513
-2026-04-07 07:05:03,626 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=180
-2026-04-07 07:05:03,626 | INFO | Lote 1/8: refs=200 -> llamando API...
+2026-04-23 07:05:06,854 | INFO | Logger iniciado en consola/stdout.
+2026-04-23 07:05:07,445 | INFO | Universo referencias: 1523
+2026-04-23 07:05:07,446 | INFO | Config: INV_BATCH_SIZE=200 INV_API_TIMEOUT=180
+2026-04-23 07:05:07,532 | INFO | inventario_actual truncada correctamente antes de iniciar la carga.
+2026-04-23 07:05:07,532 | INFO | Lote 1/8: refs=200 -> llamando API...
 Traceback (most recent call last):
   File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
     sock = connection.create_connection(
@@ -85,13 +85,13 @@ During handling of the above exception, another exception occurred:
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
-  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 263, in <module>
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 254, in <module>
     main()
     ~~~~^^
-  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 228, in main
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 226, in main
     datos, truncado = llamar_api_inventario(batch, timeout_sec=timeout)
                       ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 192, in llamar_api_inventario
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 190, in llamar_api_inventario
     r = requests.post(url, json=body, timeout=timeout_sec)
   File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\api.py", line 115, in post
     return request("post", url, data=data, json=json, **kwargs)
@@ -106,4 +106,4 @@ Traceback (most recent call last):
     raise ConnectionError(e, request=request)
 requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=5031): Max retries exceeded with url: /api/sqlserver/inventario-existencias/consultar (Caused by NewConnectionError("HTTPConnection(host='localhost', port=5031): Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión"))
 SQLSERVER_API_URL = http://localhost:5031
-[07/04/2026  7:05:08.03] ERROR inventario_job rc=1 log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_job.log 
+[23/04/2026  7:05:12.72] ERROR inventario_job rc=1 log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_job.log 

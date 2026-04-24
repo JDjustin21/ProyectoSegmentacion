@@ -283,11 +283,15 @@
     const pageIndicator = document.getElementById("pageIndicator");
 
     const btnLimpiar = document.getElementById("btnLimpiar");
+    const btnCopiarTienda = document.getElementById("btnCopiarTienda");
+    const copyStoreMenu = document.getElementById("copyStoreMenu");
+    const copyStoreWrap = document.getElementById("copyStoreWrap");
 
     // “inicio de sesión” de la página (para exportar por rango desde que abriste la pantalla)
     const pageSessionStartIso = new Date().toISOString();
 
     let totalPages = 1;
+    let tiendasCandidatasCopiar = [];
 
     // =========================================================
     // 7) Filtro sobre DATA (no DOM)
@@ -461,12 +465,22 @@
       render();
     });
 
-    filtroLinea?.addEventListener("change", e => {
+    filtroLinea?.addEventListener("change", async e => {
       filtros.linea = norm(e.target.value);
+      console.log("[COPIAR TIENDA] línea seleccionada:", filtros.linea);
+
       filtros.categoria = "";
       filtros.referencia = "";
       currentPage = 1;
       render();
+
+      try {
+        await cargarTiendasCandidatasCopiar();
+        console.log("[COPIAR TIENDA] candidatas:", tiendasCandidatasCopiar);
+        console.log("[COPIAR TIENDA] botón disabled:", btnCopiarTienda?.disabled);
+      } catch (err) {
+        console.error("Error cargando tiendas candidatas:", err);
+      }
     });
 
     filtroEstado?.addEventListener("change", e => {
@@ -533,6 +547,8 @@
 
       currentPage = 1;
       render();
+      tiendasCandidatasCopiar = [];
+      renderMenuCopiarTiendas();
     });
 
     function buildQuery(params) {
@@ -542,6 +558,130 @@
         if (value) usp.set(k, value);
       });
       return usp.toString();
+    }
+
+    const API_TIENDAS_CANDIDATAS_COPIAR = "/segmentacion/api/segmentaciones/tiendas-candidatas";
+    const API_PREVIEW_COPIAR_TIENDA = "/segmentacion/api/segmentaciones/copiar-tienda/preview";
+    const API_EJECUTAR_COPIAR_TIENDA = "/segmentacion/api/segmentaciones/copiar-tienda/ejecutar";
+
+    async function fetchJson(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { "Accept": "application/json", ...(options.headers || {}) },
+        ...options
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+      return json;
+    }
+
+    async function cargarTiendasCandidatasCopiar() {
+      const linea = norm(filtros.linea);
+
+      tiendasCandidatasCopiar = [];
+
+      if (!linea) {
+        renderMenuCopiarTiendas();
+        return;
+      }
+
+      const url = `${API_TIENDAS_CANDIDATAS_COPIAR}?${buildQuery({ linea })}`;
+      const json = await fetchJson(url);
+
+      tiendasCandidatasCopiar = Array.isArray(json.data) ? json.data : [];
+      renderMenuCopiarTiendas();
+    }
+
+    function renderMenuCopiarTiendas() {
+      if (!btnCopiarTienda || !copyStoreMenu || !copyStoreWrap) return;
+
+      copyStoreMenu.innerHTML = "";
+
+      const linea = norm(filtros.linea);
+      const hasLinea = !!linea;
+      const items = Array.isArray(tiendasCandidatasCopiar) ? tiendasCandidatasCopiar : [];
+
+      if (!hasLinea) {
+        btnCopiarTienda.disabled = true;
+        copyStoreMenu.innerHTML = `
+          <div class="preset-menu-item">
+            <div style="font-size:13px; font-weight:500;">Selecciona una línea</div>
+            <div style="font-size:11px; opacity:0.65;">Debes filtrar primero por línea comercial</div>
+          </div>
+        `;
+        return;
+      }
+
+      btnCopiarTienda.disabled = false;
+
+      if (items.length === 0) {
+        copyStoreMenu.innerHTML = `
+          <div class="preset-menu-item">
+            <div style="font-size:13px; font-weight:500;">Sin tiendas disponibles</div>
+            <div style="font-size:11px; opacity:0.65;">No hay tiendas segmentadas para copiar en esta línea</div>
+          </div>
+        `;
+        return;
+      }
+
+      items.forEach(item => {
+        const refEjemplo = norm(item.referencia_ejemplo);
+        const llave = norm(item.llave_naval);
+        const tienda = norm(item.desc_dependencia || item.dependencia);
+        const ciudad = norm(item.ciudad);
+        const refs = Number(item.referencias_segmentadas || 0);
+        const und = Number(item.total_unidades || 0);
+
+        const el = document.createElement("div");
+        el.className = "preset-menu-item copy-store-item";
+        el.dataset.llaveNaval = llave;
+
+        el.innerHTML = `
+          <div style="font-size:13px; font-weight:500;">
+            ${tienda || llave}
+          </div>
+          <div style="font-size:11px; opacity:0.65;">
+            ${[ciudad, `${refs} referencias`, `${und} und`].filter(Boolean).join(" • ")}
+          </div>
+          ${
+            refEjemplo
+              ? `<div style="font-size:10px; opacity:0.5;">Referencia Origen: ${refEjemplo}</div>`
+              : ""
+          }
+        `;
+
+        copyStoreMenu.appendChild(el);
+      });
+    }
+
+    async function previewCopiarTienda(llaveNavalOrigen) {
+      const payload = {
+        linea: norm(filtros.linea),
+        llave_naval_origen: norm(llaveNavalOrigen)
+      };
+
+      return fetchJson(API_PREVIEW_COPIAR_TIENDA, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    async function ejecutarCopiarTienda(llaveNavalOrigen) {
+      const payload = {
+        linea: norm(filtros.linea),
+        llave_naval_origen: norm(llaveNavalOrigen),
+        confirmar: true
+      };
+
+      return fetchJson(API_EJECUTAR_COPIAR_TIENDA, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
     }
 
     function exportHoyGlobal() {
@@ -567,6 +707,77 @@
         // Exporta TODO lo guardado (Postgres)
         window.location.href = "/segmentacion/api/segmentaciones/export/excel";
       });
+    }
+  });
+
+  btnCopiarTienda?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!copyStoreMenu || btnCopiarTienda.disabled) return;
+
+    copyStoreMenu.style.display =
+      copyStoreMenu.style.display === "block" ? "none" : "block";
+  });
+
+  copyStoreMenu?.addEventListener("click", async (e) => {
+    const item = e.target.closest(".copy-store-item");
+    if (!item) return;
+
+    const llaveNavalOrigen = norm(item.dataset.llaveNaval);
+    if (!llaveNavalOrigen) return;
+
+    copyStoreMenu.style.display = "none";
+
+    try {
+      const preview = await previewCopiarTienda(llaveNavalOrigen);
+      if (!preview.ok) {
+        alert(preview.error || "No fue posible previsualizar la copia.");
+        return;
+      }
+
+      const refs = Number(preview.referencias_afectadas || 0);
+      const linea = norm(preview.linea);
+      const refOrigen = norm(preview.referencia_origen);
+
+      const confirmado = window.confirm(
+        `Se va a copiar la segmentación de la tienda seleccionada a ${refs} referencias segmentadas de la línea "${linea}".` +
+        `${refOrigen ? `\n\nReferencia origen: ${refOrigen}` : ""}` +
+        `\n\n¿Estás seguro que quieres guardar la segmentación?`
+      );
+
+      if (!confirmado) return;
+
+      const result = await ejecutarCopiarTienda(llaveNavalOrigen);
+      if (!result.ok) {
+        alert(result.error || "No fue posible ejecutar la copia de tienda.");
+        return;
+      }
+
+      alert(
+        `Proceso completado.\n` +
+        `Referencias actualizadas: ${result.referencias_actualizadas || 0}\n` +
+        `Referencias omitidas: ${result.referencias_omitidas || 0}`
+      );
+
+      await cargarReferencias();
+      render();
+
+      try {
+        await cargarTiendasCandidatasCopiar();
+      } catch (err) {
+        console.error("Error recargando candidatas:", err);
+      }
+
+    } catch (err) {
+      console.error(err);
+      alert(err?.message || "Error procesando la copia de tienda.");
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!copyStoreWrap?.contains(e.target)) {
+      if (copyStoreMenu) {
+        copyStoreMenu.style.display = "none";
+      }
     }
   });
     
@@ -722,6 +933,7 @@
       try {
         await cargarReferencias();
         render();
+        await cargarTiendasCandidatasCopiar();
       } catch (err) {
         console.error(err);
         cardsContainer.innerHTML = `

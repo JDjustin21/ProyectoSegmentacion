@@ -87,7 +87,7 @@ def _obtener_referencias_resumen_cards():
     """
     repo = _pg_repo()
     svc_pg = _svc_pg(repo)
-    return svc_pg.listar_referencias_resumen_cards(dias_nuevo=7)
+    return svc_pg.listar_referencias_resumen_cards()
 
 @segmentacion_bp.route("/", methods=["GET"])
 @login_required
@@ -197,13 +197,12 @@ def api_ack_referencia():
         return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
 
     repo = _pg_repo()
-    now = datetime.now(TZ_BOGOTA)
 
     repo.execute("""
         UPDATE public.referencias_vistas
-        SET acknowledged_at = %(now)s
+        SET viewed_at = NOW()
         WHERE referencia_sku = %(ref)s;
-    """, {"now": now, "ref": referencia})
+    """, {"ref": referencia})
 
     return jsonify({"ok": True})
 
@@ -486,9 +485,10 @@ def _rebuild_index_if_needed(force: bool = False, ttl_seconds: int = 60) -> None
 @login_required
 def api_segmentaciones_candidatas():
     referencia_base = (request.args.get("referenciaBase") or "").strip()
+    cuento = (request.args.get("cuento") or "").strip()
     referencia_sku_actual = (request.args.get("referenciaSkuActual") or "").strip()
 
-    if not referencia_base:
+    if not referencia_base and not cuento:
         return jsonify({"ok": True, "data": []})
 
     repo = _pg_repo()
@@ -496,6 +496,7 @@ def api_segmentaciones_candidatas():
 
     rows = svc.listar_segmentaciones_candidatas_por_base(
         referencia_base=referencia_base,
+        cuento=cuento,
         referencia_sku_actual=referencia_sku_actual,
     )
     return jsonify({"ok": True, "data": rows})
@@ -513,6 +514,91 @@ def api_segmentacion_para_copiar():
 
     result = svc.obtener_segmentacion_para_copiar(int(raw_id))
     return jsonify({"ok": True, "data": result})
+
+
+@segmentacion_bp.get("/api/segmentaciones/tiendas-candidatas")
+@login_required
+def api_tiendas_candidatas_para_copiar():
+    """
+    Lista tiendas que ya están segmentadas dentro de una línea.
+    Sirve para poblar el menú principal de 'copiar tienda'.
+    """
+    linea = (request.args.get("linea") or "").strip()
+    if not linea:
+        return jsonify({"ok": False, "error": "Falta query param: linea"}), 400
+
+    repo = _pg_repo()
+    svc = _svc_pg(repo)
+
+    rows = svc.listar_tiendas_candidatas_para_copiar(linea)
+    return jsonify({"ok": True, "data": rows})
+
+
+@segmentacion_bp.post("/api/segmentaciones/copiar-tienda/preview")
+@login_required
+def api_preview_copiar_tienda():
+    """
+    No guarda nada.
+    Solo calcula el impacto de copiar una tienda segmentada
+    a todas las referencias segmentadas de la línea.
+    """
+    payload = request.get_json(silent=True) or {}
+
+    linea = (payload.get("linea") or "").strip()
+    llave_naval_origen = (payload.get("llave_naval_origen") or "").strip()
+
+    if not linea:
+        return jsonify({"ok": False, "error": "Falta 'linea'"}), 400
+    if not llave_naval_origen:
+        return jsonify({"ok": False, "error": "Falta 'llave_naval_origen'"}), 400
+
+    repo = _pg_repo()
+    svc = _svc_pg(repo)
+
+    result = svc.preview_copiar_tienda_a_linea_segmentada(
+        linea_raw=linea,
+        llave_naval_origen=llave_naval_origen,
+    )
+
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@segmentacion_bp.post("/api/segmentaciones/copiar-tienda/ejecutar")
+@login_required
+def api_ejecutar_copiar_tienda():
+    """
+    Ejecuta la copia masiva de una tienda segmentada
+    hacia todas las referencias ya segmentadas de una línea.
+    """
+    payload = request.get_json(silent=True) or {}
+
+    linea = (payload.get("linea") or "").strip()
+    llave_naval_origen = (payload.get("llave_naval_origen") or "").strip()
+    confirmar = payload.get("confirmar")
+
+    if not linea:
+        return jsonify({"ok": False, "error": "Falta 'linea'"}), 400
+    if not llave_naval_origen:
+        return jsonify({"ok": False, "error": "Falta 'llave_naval_origen'"}), 400
+    if confirmar is not True:
+        return jsonify({
+            "ok": False,
+            "error": "Debes confirmar explícitamente la operación."
+        }), 400
+
+    repo = _pg_repo()
+    svc = _svc_pg(repo)
+
+    result = svc.ejecutar_copiar_tienda_a_linea_segmentada(
+        linea_raw=linea,
+        llave_naval_origen=llave_naval_origen,
+    )
+
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
 
 @segmentacion_bp.get("/api/imagenes/referencia")
 @login_required

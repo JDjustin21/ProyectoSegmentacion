@@ -32,7 +32,7 @@
   }
 
   function sortTallas(tallas) {
-    const baseOrder = ["XS", "S", "M", "L", "XL"];
+    const baseOrder = ["XS", "S", "M", "L", "XL", "U"];
 
     const arr = Array.isArray(tallas) ? tallas.map(norm).filter(Boolean) : [];
 
@@ -810,37 +810,30 @@
 
   async function cargarSegmentacionesCandidatas() {
     const referenciaBase = norm(state.ref.referenciaBase);
+    const cuento = norm(state.ref.cuento);
     const referenciaSkuActual = norm(state.ref.referenciaSku);
 
-    console.log("[COPIAR] referenciaBase:", referenciaBase);
-    console.log("[COPIAR] referenciaSkuActual:", referenciaSkuActual);
-
-    if (!referenciaBase) {
+    if (!referenciaBase && !cuento) {
       state.segmentacionesCandidatas = [];
-      console.log("[COPIAR] Sin referenciaBase, no hay candidatas.");
       return;
     }
 
     const q = buildQuery({
       referenciaBase,
+      cuento,
       referenciaSkuActual,
     });
 
     const url = `${API_CANDIDATAS}?${q}`;
-  console.log("[COPIAR] GET candidatas:", url);
+    const json = await fetchJson(url);
 
-  const json = await fetchJson(url);
-  console.log("[COPIAR] respuesta candidatas:", json);
+    if (!json.ok) {
+      state.segmentacionesCandidatas = [];
+      return;
+    }
 
-  if (!json.ok) {
-    state.segmentacionesCandidatas = [];
-    console.log("[COPIAR] json.ok = false");
-    return;
+    state.segmentacionesCandidatas = Array.isArray(json.data) ? json.data : [];
   }
-
-  state.segmentacionesCandidatas = Array.isArray(json.data) ? json.data : [];
-  console.log("[COPIAR] candidatas finales:", state.segmentacionesCandidatas);
-}
 
   function renderSegmentacionesCandidatas(dom) {
     const wrapEl = dom.copyWrapEl;
@@ -881,6 +874,7 @@
         <div style="font-size:11px; opacity:0.7;">
           ${[
             norm(item.color),
+            norm(item.cuento) ? `Cuento: ${norm(item.cuento)}` : "",
             item.tiendas_segmentadas != null ? `${item.tiendas_segmentadas} tiendas` : "",
             item.total_unidades != null ? `${item.total_unidades} und` : ""
           ].filter(Boolean).join(" • ")}

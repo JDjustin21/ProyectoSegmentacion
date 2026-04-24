@@ -154,7 +154,7 @@
         <div class="product-info">
           <div class="product-info-head">
             <div class="product-ref">${referencia}
-              ${isNew ? `<span class="ref-new-dot" title="Nueva referencia"></span>` : ``}
+              ${isNew ? `<span class="dot-new" title="Nueva referencia"></span>` : ``}
             </div>
             <div class="product-badges">
               <span class="badge ${badgeClass} ${badgeTextClass}">${estado || "—"}</span>

@@ -1013,7 +1013,7 @@ html, body{
   padding: 10px 14px;
   cursor: pointer;
   border-bottom: 1px solid rgba(255,255,255,0.1);
-  transition: background 0.3s ease, box-shadow 0.3s ease; /* Añadido para una transición suave */
+  transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
 .preset-menu-item:last-child {
@@ -1021,19 +1021,80 @@ html, body{
 }
 
 .preset-menu-item:hover {
-  background: rgba(255,255,255,0.1); /* Fondo más claro para ambas opciones */
-  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2); /* Sombra más suave y consistente */
+  background: rgba(255,255,255,0.1);
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .preset-menu-item:focus {
-  background: rgba(255, 255, 255, 0.15); /* Fondo más marcado cuando tiene foco (accesibilidad) */
-  outline: none; /* Elimina el borde de enfoque por defecto */
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
 }
 
-/* Foco al pasar con el teclado */
 .preset-menu-item:focus-visible {
-  border: 2px solid #fff; /* Bordes de enfoque con color blanco para accesibilidad */
+  border: 2px solid #fff;
 }
 
-/* ============================
-   FIN Style.css
+/* Copiar tienda */
+#copyStoreWrap {
+  position: relative;
+  display: inline-block;
+}
+
+#btnCopiarTienda {
+  white-space: nowrap;
+  min-width: 140px;
+}
+
+#btnCopiarTienda:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Scroll real de menús */
+#copyStoreMenu,
+#detalleCopyMenu {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+#copyStoreMenu::-webkit-scrollbar,
+#detalleCopyMenu::-webkit-scrollbar {
+  width: 8px;
+}
+
+#copyStoreMenu::-webkit-scrollbar-thumb,
+#detalleCopyMenu::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.20);
+  border-radius: 999px;
+}
+
+#copyStoreMenu::-webkit-scrollbar-track,
+#detalleCopyMenu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Items del menú copiar tienda */
+.copy-store-item {
+  display: block;
+}
+
+.copy-store-item > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-store-item > div:first-child::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #0d6efd;
+  opacity: 0.7;
+  flex: 0 0 auto;
+}
+
+/*
+FIN STYLE.CSS

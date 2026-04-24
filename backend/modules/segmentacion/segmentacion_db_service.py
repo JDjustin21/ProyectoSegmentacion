@@ -55,8 +55,7 @@ class SegmentacionDbService:
         return loaded_at
 
     def listar_referencias_resumen_cards(
-        self,
-        dias_nuevo: int = 7
+        self
     ) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
         """
         Retorna SOLO el dataset liviano para cards.
@@ -85,31 +84,51 @@ class SegmentacionDbService:
         referencias = self._repo.fetch_all(sql)
         cache_updated_at = self.obtener_snapshot_updated_at()
 
-        referencias = self.anotar_referencias_nuevas(
-            referencias,
-            dias_nuevo=dias_nuevo
-        )
-
+        referencias = self.anotar_referencias_nuevas(referencias)
         referencias = self.anotar_segmentacion_y_conteo(referencias)
+
+        def _fecha_sort_value(v):
+            if not v:
+                return ""
+            try:
+                return str(v)
+            except Exception:
+                return ""
 
         referencias.sort(
             key=lambda r: (
-                not bool(r.get("is_new", False)),
-                (r.get("referencia") or "").strip()
-            )
+                0 if r.get("is_new") else 1,
+                _fecha_sort_value(r.get("fechaCreacion")) if r.get("is_new") else "",
+                r.get("referencia", "")
+            ),
+            reverse=False
         )
+
+        # Reordenar nuevas por fecha descendente manteniendo resto abajo
+        nuevas = [r for r in referencias if r.get("is_new")]
+        resto = [r for r in referencias if not r.get("is_new")]
+
+        nuevas.sort(
+            key=lambda r: (_fecha_sort_value(r.get("fechaCreacion")), r.get("referencia", "")),
+            reverse=True
+        )
+        resto.sort(key=lambda r: r.get("referencia", ""))
+
+        referencias = nuevas + resto
 
         return referencias, cache_updated_at
     
     def listar_segmentaciones_candidatas_por_base(
         self,
         referencia_base: str,
+        cuento: str = "",
         referencia_sku_actual: str = ""
     ) -> List[Dict[str, Any]]:
         base = (referencia_base or "").strip()
+        cuento_val = (cuento or "").strip()
         actual = (referencia_sku_actual or "").strip()
 
-        if not base:
+        if not base and not cuento_val:
             return []
 
         sql = """
@@ -118,28 +137,66 @@ class SegmentacionDbService:
                     s.id_segmentacion,
                     s.referencia AS referencia_sku,
                     s.referencia_base,
+                    s.cuento,
                     s.color,
                     s.codigo_color,
                     s.descripcion,
                     s.linea,
                     s.fecha_creacion,
-                    s.estado_segmentacion
+                    s.estado_segmentacion,
+                    CASE
+                        WHEN (%(base)s <> '' AND COALESCE(s.referencia_base, '') = %(base)s)
+                        AND (%(cuento)s <> '' AND COALESCE(s.cuento, '') = %(cuento)s)
+                            THEN 3
+                        WHEN (%(base)s <> '' AND COALESCE(s.referencia_base, '') = %(base)s)
+                            THEN 2
+                        WHEN (%(cuento)s <> '' AND COALESCE(s.cuento, '') = %(cuento)s)
+                            THEN 1
+                        ELSE 0
+                    END AS prioridad_copia,
+                    CASE
+                        WHEN (%(base)s <> '' AND COALESCE(s.referencia_base, '') = %(base)s)
+                        AND (%(cuento)s <> '' AND COALESCE(s.cuento, '') = %(cuento)s)
+                            THEN 'base + cuento'
+                        WHEN (%(base)s <> '' AND COALESCE(s.referencia_base, '') = %(base)s)
+                            THEN 'base'
+                        WHEN (%(cuento)s <> '' AND COALESCE(s.cuento, '') = %(cuento)s)
+                            THEN 'cuento'
+                        ELSE ''
+                    END AS tipo_coincidencia
                 FROM segmentacion s
-                WHERE s.referencia_base = %(base)s
-                AND (%(actual)s = '' OR s.referencia <> %(actual)s)
-                ORDER BY s.referencia, s.fecha_creacion DESC
+                WHERE
+                    (
+                        (%(base)s <> '' AND COALESCE(s.referencia_base, '') = %(base)s)
+                        OR
+                        (%(cuento)s <> '' AND COALESCE(s.cuento, '') = %(cuento)s)
+                    )
+                    AND (%(actual)s = '' OR s.referencia <> %(actual)s)
+                ORDER BY
+                    s.referencia,
+                    CASE
+                        WHEN (%(base)s <> '' AND COALESCE(s.referencia_base, '') = %(base)s)
+                        AND (%(cuento)s <> '' AND COALESCE(s.cuento, '') = %(cuento)s)
+                            THEN 3
+                        WHEN (%(base)s <> '' AND COALESCE(s.referencia_base, '') = %(base)s)
+                            THEN 2
+                        WHEN (%(cuento)s <> '' AND COALESCE(s.cuento, '') = %(cuento)s)
+                            THEN 1
+                        ELSE 0
+                    END DESC,
+                    s.fecha_creacion DESC
             ),
             det AS (
                 SELECT
                     d.id_segmentacion,
                     COUNT(DISTINCT CASE
-                        WHEN COALESCE(d.estado_detalle,'Activo') = 'Activo'
-                        AND COALESCE(d.cantidad,0) > 0
+                        WHEN COALESCE(d.estado_detalle, 'Activo') = 'Activo'
+                        AND COALESCE(d.cantidad, 0) > 0
                         THEN d.llave_naval
                     END) AS tiendas_segmentadas,
                     COALESCE(SUM(CASE
-                        WHEN COALESCE(d.estado_detalle,'Activo') = 'Activo'
-                        AND COALESCE(d.cantidad,0) > 0
+                        WHEN COALESCE(d.estado_detalle, 'Activo') = 'Activo'
+                        AND COALESCE(d.cantidad, 0) > 0
                         THEN d.cantidad
                         ELSE 0
                     END), 0) AS total_unidades
@@ -150,19 +207,27 @@ class SegmentacionDbService:
                 l.id_segmentacion,
                 l.referencia_sku,
                 l.referencia_base,
+                l.cuento,
                 l.color,
                 l.codigo_color,
                 l.descripcion,
                 l.linea,
                 l.fecha_creacion,
                 l.estado_segmentacion,
+                l.prioridad_copia,
+                l.tipo_coincidencia,
                 COALESCE(det.tiendas_segmentadas, 0) AS tiendas_segmentadas,
                 COALESCE(det.total_unidades, 0) AS total_unidades
             FROM last_seg_por_sku l
             LEFT JOIN det ON det.id_segmentacion = l.id_segmentacion
-            ORDER BY l.fecha_creacion DESC;
+            WHERE l.prioridad_copia > 0
+            ORDER BY l.prioridad_copia DESC, l.fecha_creacion DESC;
         """
-        return self._repo.fetch_all(sql, {"base": base, "actual": actual})
+        return self._repo.fetch_all(sql, {
+            "base": base,
+            "cuento": cuento_val,
+            "actual": actual,
+        })
     
     def obtener_segmentacion_para_copiar(self, id_segmentacion: int) -> Dict[str, Any]:
         sql_head = """
@@ -200,6 +265,332 @@ class SegmentacionDbService:
 
         head["detalle"] = detalle
         return {"existe": True, "segmentacion": head}
+    
+
+    def _listar_llaves_activas_por_linea(self, linea_raw: str) -> set[str]:
+        linea_norm = self.normalizar_linea(linea_raw)
+
+        sql = f"""
+            SELECT DISTINCT v.llave_naval
+            FROM {self._view_tiendas} v
+            WHERE v.linea_norm = %(linea_norm)s
+            AND v.estado_tienda_norm = 'activo'
+            AND v.estado_linea_norm  = 'activo';
+        """
+        rows = self._repo.fetch_all(sql, {"linea_norm": linea_norm})
+        return {
+            (r.get("llave_naval") or "").strip()
+            for r in rows
+            if (r.get("llave_naval") or "").strip()
+        }
+    def listar_tiendas_candidatas_para_copiar(
+            self,
+            linea_raw: str
+        ) -> List[Dict[str, Any]]:
+            """
+            Lista tiendas que ya están segmentadas en referencias de la línea dada.
+            Sirve para alimentar el menú principal de 'copiar tienda'.
+            """
+            linea = (linea_raw or "").strip()
+            if not linea:
+                return []
+
+            llaves_activas = self._listar_llaves_activas_por_linea(linea)
+            if not llaves_activas:
+                return []
+
+            sql = """
+                WITH ultimas AS (
+                    SELECT DISTINCT ON (s.referencia)
+                        s.id_segmentacion,
+                        s.referencia,
+                        s.linea,
+                        s.fecha_creacion
+                    FROM segmentacion s
+                    WHERE COALESCE(s.linea, '') = %(linea)s
+                    ORDER BY s.referencia, s.fecha_creacion DESC
+                ),
+                det AS (
+                    SELECT
+                        u.referencia,
+                        u.fecha_creacion,
+                        d.llave_naval,
+                        COUNT(*) AS filas_talla,
+                        COALESCE(SUM(d.cantidad), 0) AS total_unidades
+                    FROM ultimas u
+                    JOIN segmentacion_detalle d
+                    ON d.id_segmentacion = u.id_segmentacion
+                    WHERE COALESCE(d.estado_detalle, 'Activo') = 'Activo'
+                    AND COALESCE(d.cantidad, 0) > 0
+                    GROUP BY u.referencia, u.fecha_creacion, d.llave_naval
+                ),
+                ref_ejemplo AS (
+                    SELECT DISTINCT ON (d.llave_naval)
+                        d.llave_naval,
+                        d.referencia AS referencia_ejemplo
+                    FROM det d
+                    ORDER BY d.llave_naval, d.fecha_creacion DESC, d.referencia ASC
+                )
+                SELECT
+                    d.llave_naval,
+                    MIN(t.desc_dependencia) AS desc_dependencia,
+                    MIN(t.dependencia) AS dependencia,
+                    MIN(t.ciudad) AS ciudad,
+                    MIN(t.zona) AS zona,
+                    COUNT(DISTINCT d.referencia) AS referencias_segmentadas,
+                    COALESCE(SUM(d.total_unidades), 0) AS total_unidades,
+                    MAX(r.referencia_ejemplo) AS referencia_ejemplo
+                FROM det d
+                LEFT JOIN public.vw_maestra_tiendas_activa_norm t
+                ON t.llave_naval = d.llave_naval
+                LEFT JOIN ref_ejemplo r
+                ON r.llave_naval = d.llave_naval
+                WHERE d.llave_naval = ANY(%(llaves)s)
+                GROUP BY d.llave_naval
+                ORDER BY referencias_segmentadas DESC, desc_dependencia ASC NULLS LAST;
+            """
+
+            return self._repo.fetch_all(sql, {
+                "linea": linea,
+                "llaves": list(llaves_activas),
+            })
+    
+    def preview_copiar_tienda_a_linea_segmentada(
+        self,
+        linea_raw: str,
+        llave_naval_origen: str
+    ) -> Dict[str, Any]:
+        """
+        No guarda nada.
+        Solo calcula si existe plantilla para esa tienda y cuántas referencias
+        segmentadas de la línea serían afectadas.
+        """
+        linea = (linea_raw or "").strip()
+        llave = (llave_naval_origen or "").strip()
+
+        if not linea:
+            return {"ok": False, "error": "Falta línea."}
+        if not llave:
+            return {"ok": False, "error": "Falta llave_naval_origen."}
+
+        llaves_activas = self._listar_llaves_activas_por_linea(linea)
+        if llave not in llaves_activas:
+            return {
+                "ok": False,
+                "error": "La tienda no está activa para la línea seleccionada."
+            }
+
+        sql_plantilla = """
+            WITH ultimas AS (
+                SELECT DISTINCT ON (s.referencia)
+                    s.id_segmentacion,
+                    s.referencia,
+                    s.linea,
+                    s.fecha_creacion
+                FROM segmentacion s
+                WHERE COALESCE(s.linea, '') = %(linea)s
+                ORDER BY s.referencia, s.fecha_creacion DESC
+            )
+            SELECT
+                u.id_segmentacion,
+                u.referencia,
+                u.fecha_creacion
+            FROM ultimas u
+            JOIN segmentacion_detalle d
+            ON d.id_segmentacion = u.id_segmentacion
+            WHERE d.llave_naval = %(llave)s
+            AND COALESCE(d.estado_detalle, 'Activo') = 'Activo'
+            AND COALESCE(d.cantidad, 0) > 0
+            ORDER BY u.fecha_creacion DESC
+            LIMIT 1;
+        """
+        plantilla = self._repo.fetch_one(sql_plantilla, {
+            "linea": linea,
+            "llave": llave
+        })
+
+        if not plantilla:
+            return {
+                "ok": False,
+                "error": "No existe una plantilla de segmentación para esa tienda en la línea."
+            }
+
+        sql_destino = """
+            WITH ultimas AS (
+                SELECT DISTINCT ON (s.referencia)
+                    s.id_segmentacion,
+                    s.referencia,
+                    s.linea
+                FROM segmentacion s
+                WHERE COALESCE(s.linea, '') = %(linea)s
+                ORDER BY s.referencia, s.fecha_creacion DESC
+            )
+            SELECT COUNT(*) AS total
+            FROM ultimas;
+        """
+        row = self._repo.fetch_one(sql_destino, {"linea": linea})
+        total_refs = int(row["total"]) if row and row.get("total") is not None else 0
+
+        return {
+            "ok": True,
+            "linea": linea,
+            "llave_naval_origen": llave,
+            "referencia_origen": plantilla.get("referencia"),
+            "id_segmentacion_origen": plantilla.get("id_segmentacion"),
+            "referencias_afectadas": total_refs,
+        }
+    
+    def ejecutar_copiar_tienda_a_linea_segmentada(
+        self,
+        linea_raw: str,
+        llave_naval_origen: str
+    ) -> Dict[str, Any]:
+        """
+        Copia una tienda segmentada a todas las referencias ya segmentadas
+        de la misma línea. Solo afecta esa tienda.
+        """
+        linea = (linea_raw or "").strip()
+        llave = (llave_naval_origen or "").strip()
+
+        preview = self.preview_copiar_tienda_a_linea_segmentada(
+            linea_raw=linea,
+            llave_naval_origen=llave,
+        )
+        if not preview.get("ok"):
+            return preview
+
+        id_seg_origen = int(preview["id_segmentacion_origen"])
+        llaves_activas = self._listar_llaves_activas_por_linea(linea)
+
+        def _tx(cur):
+            now = datetime.now(TZ_BOGOTA)
+
+            # 1) Leer plantilla (solo la tienda origen)
+            cur.execute("""
+                SELECT talla, cantidad, codigo_barras
+                FROM segmentacion_detalle
+                WHERE id_segmentacion = %(id_seg)s
+                AND llave_naval = %(llave)s
+                AND COALESCE(estado_detalle, 'Activo') = 'Activo'
+                AND COALESCE(cantidad, 0) > 0
+                ORDER BY talla;
+            """, {
+                "id_seg": id_seg_origen,
+                "llave": llave
+            })
+            plantilla = cur.fetchall() or []
+            if not plantilla:
+                raise RuntimeError("La plantilla de la tienda origen no contiene tallas activas.")
+
+            # 2) Referencias destino = últimas segmentaciones de la línea
+            cur.execute("""
+                WITH ultimas AS (
+                    SELECT DISTINCT ON (s.referencia)
+                        s.id_segmentacion,
+                        s.referencia
+                    FROM segmentacion s
+                    WHERE COALESCE(s.linea, '') = %(linea)s
+                    ORDER BY s.referencia, s.fecha_creacion DESC
+                )
+                SELECT id_segmentacion, referencia
+                FROM ultimas
+                ORDER BY referencia;
+            """, {"linea": linea})
+            destinos = cur.fetchall() or []
+
+            actualizadas = 0
+            omitidas = 0
+
+            for dest in destinos:
+                id_seg_dest = int(dest["id_segmentacion"])
+                referencia_dest = (dest["referencia"] or "").strip()
+
+                if not referencia_dest:
+                    omitidas += 1
+                    continue
+
+                if llave not in llaves_activas:
+                    omitidas += 1
+                    continue
+
+                # 3) Obtener las tallas que vienen en la plantilla
+                tallas_plantilla = {
+                    (fila["talla"] or "").strip()
+                    for fila in plantilla
+                    if (fila.get("talla") or "").strip()
+                }
+
+                # 4) Inactivar SOLO las tallas actuales de esa tienda que ya no estén en la plantilla
+                cur.execute("""
+                    UPDATE segmentacion_detalle
+                    SET
+                        estado_detalle = 'Inactivo',
+                        fecha_actualizacion = %(now)s
+                    WHERE id_segmentacion = %(id_seg)s
+                    AND llave_naval = %(llave)s
+                    AND talla <> ALL(%(tallas_plantilla)s);
+                """, {
+                    "id_seg": id_seg_dest,
+                    "llave": llave,
+                    "tallas_plantilla": list(tallas_plantilla),
+                    "now": now
+                })
+
+                # 5) Upsert de las tallas de la plantilla:
+                #    si ya existe esa talla para esa tienda/referencia -> UPDATE
+                #    si no existe -> INSERT
+                for fila in plantilla:
+                    talla = (fila.get("talla") or "").strip()
+                    if not talla:
+                        continue
+
+                    cur.execute("""
+                        INSERT INTO segmentacion_detalle (
+                            id_segmentacion,
+                            llave_naval,
+                            talla,
+                            cantidad,
+                            codigo_barras,
+                            estado_detalle,
+                            fecha_actualizacion
+                        )
+                        VALUES (
+                            %(id_seg)s,
+                            %(llave)s,
+                            %(talla)s,
+                            %(cantidad)s,
+                            %(codigo_barras)s,
+                            'Activo',
+                            %(now)s
+                        )
+                        ON CONFLICT (id_segmentacion, llave_naval, talla)
+                        DO UPDATE SET
+                            cantidad = EXCLUDED.cantidad,
+                            codigo_barras = EXCLUDED.codigo_barras,
+                            estado_detalle = 'Activo',
+                            fecha_actualizacion = EXCLUDED.fecha_actualizacion;
+                    """, {
+                        "id_seg": id_seg_dest,
+                        "llave": llave,
+                        "talla": talla,
+                        "cantidad": int(fila.get("cantidad") or 0),
+                        "codigo_barras": (fila.get("codigo_barras") or None),
+                        "now": now
+                    })
+
+                actualizadas += 1
+
+            return {
+                "ok": True,
+                "linea": linea,
+                "llave_naval_origen": llave,
+                "referencia_origen": preview.get("referencia_origen"),
+                "referencias_afectadas": preview.get("referencias_afectadas", 0),
+                "referencias_actualizadas": actualizadas,
+                "referencias_omitidas": omitidas,
+            }
+
+        return self._repo.run_in_transaction(_tx)
 
     def obtener_referencia_detalle_snapshot(
         self,
@@ -850,20 +1241,29 @@ class SegmentacionDbService:
             return referencias
 
         sql_upsert = """
-            INSERT INTO public.referencias_vistas (referencia_sku, last_seen)
-            VALUES (%(referencia_sku)s, %(last_seen)s)
+            INSERT INTO public.referencias_vistas (
+                referencia_sku,
+                first_seen,
+                last_seen
+            )
+            VALUES (
+                %(referencia_sku)s,
+                %(now)s,
+                %(now)s
+            )
             ON CONFLICT (referencia_sku)
-            DO UPDATE SET last_seen = EXCLUDED.last_seen;
+            DO UPDATE SET
+                last_seen = EXCLUDED.last_seen;
         """
-        rows = [{"referencia_sku": ref, "last_seen": now} for ref in ref_list]
+        rows = [{"referencia_sku": ref, "now": now} for ref in ref_list]
         self._repo.execute_many(sql_upsert, rows)
 
         cutoff = now - timedelta(days=int(dias_nuevo))
         sql_nuevas = """
             SELECT referencia_sku
             FROM public.referencias_vistas
-            WHERE first_seen >= %(cutoff)s
-              AND acknowledged_at IS NULL;
+            WHERE referencia_sku = ANY(%(refs)s)
+            AND viewed_at IS NULL;
         """
         nuevas_rows = self._repo.fetch_all(sql_nuevas, {"cutoff": cutoff})
         nuevas_set = {(x.get("referencia_sku") or "").strip() for x in nuevas_rows}
@@ -900,12 +1300,23 @@ class SegmentacionDbService:
             return 0
 
         sql_upsert = """
-            INSERT INTO public.referencias_vistas (referencia_sku, last_seen)
-            VALUES (%(referencia_sku)s, %(last_seen)s)
+            INSERT INTO public.referencias_vistas (
+                referencia_sku,
+                first_seen,
+                last_seen,
+                viewed_at
+            )
+            VALUES (
+                %(referencia_sku)s,
+                %(now)s,
+                %(now)s,
+                NULL
+            )
             ON CONFLICT (referencia_sku)
-            DO UPDATE SET last_seen = EXCLUDED.last_seen;
+            DO UPDATE SET
+                last_seen = EXCLUDED.last_seen;
         """
-        rows = [{"referencia_sku": ref, "last_seen": now} for ref in ref_list]
+        rows = [{"referencia_sku": ref, "now": now} for ref in ref_list]
         self._repo.execute_many(sql_upsert, rows)
 
         return len(rows)
@@ -935,18 +1346,19 @@ class SegmentacionDbService:
     
     def anotar_referencias_nuevas(
         self,
-        referencias: List[Dict[str, Any]],
-        dias_nuevo: int = 7
+        referencias: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
         Marca is_new en las referencias usando referencias_vistas.
+
+        Regla nueva:
+        - is_new = True si viewed_at IS NULL
+        - is_new = False si viewed_at IS NOT NULL
+
         Solo lectura. No hace upserts.
         """
         if not referencias:
             return referencias
-
-        now = datetime.now(TZ_BOGOTA)
-        cutoff = now - timedelta(days=int(dias_nuevo))
 
         ref_list: List[str] = []
         for r in referencias:
@@ -961,10 +1373,9 @@ class SegmentacionDbService:
             SELECT referencia_sku
             FROM public.referencias_vistas
             WHERE referencia_sku = ANY(%(refs)s)
-              AND first_seen >= %(cutoff)s
-              AND acknowledged_at IS NULL;
+            AND viewed_at IS NULL;
         """
-        nuevas_rows = self._repo.fetch_all(sql_nuevas, {"refs": ref_list, "cutoff": cutoff})
+        nuevas_rows = self._repo.fetch_all(sql_nuevas, {"refs": ref_list})
         nuevas_set = {(x.get("referencia_sku") or "").strip() for x in nuevas_rows}
 
         for r in referencias:

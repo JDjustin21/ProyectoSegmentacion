@@ -82,11 +82,38 @@
             <label class="form-check-label" for="filtroSoloSegmentadas">Segmentadas</label>
           </div>
         </div>
-
+        
         <div class="seg-pill d-flex align-items-center">
           <div class="form-check form-switch m-0">
             <input class="form-check-input" type="checkbox" id="filtroSoloNoSegmentadas">
             <label class="form-check-label" for="filtroSoloNoSegmentadas">NoSegmentada</label>
+          </div>
+        </div>
+
+        <div id="copyStoreWrap" style="position:relative; display:inline-block;">
+          <button
+            type="button"
+            id="btnCopiarTienda"
+            class="btn btn-outline-secondary btn-sm"
+            disabled>
+            Copiar tienda ▾
+          </button>
+
+          <div id="copyStoreMenu" style="
+            display:none;
+            position:absolute;
+            top:calc(100% + 4px);
+            right:0;
+            background:var(--bs-body-bg, #2b2b2b);
+            border:1px solid rgba(255,255,255,0.2);
+            border-radius:8px;
+            box-shadow:0 4px 16px rgba(0,0,0,.25);
+            min-width:320px;
+            z-index:9999;
+            max-height:300px;
+            overflow-y:auto;
+            overflow-x:hidden;
+          ">
           </div>
         </div>
 
@@ -267,7 +294,10 @@
             box-shadow:0 4px 16px rgba(0,0,0,.25);
             min-width:320px;
             z-index:9999;
-            overflow:hidden;
+            z-index:9999;
+            max-height:300px;
+            overflow-y:auto;
+            overflow-x:hidden;
           ">
           </div>
         </div>
