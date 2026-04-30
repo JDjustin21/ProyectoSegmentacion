@@ -58,6 +58,60 @@ def build_hash_fila(row: dict) -> str:
     ]
     return md5("|".join(parts).upper())
 
+def consolidar_filas_por_hash(rows: list[dict]) -> tuple[list[dict], int]:
+    """
+    Consolida filas duplicadas antes de insertar en staging.
+
+    Motivo:
+    PostgreSQL no permite que un mismo INSERT con ON CONFLICT intente
+    actualizar dos veces la misma clave única. En este job la clave única
+    es hash_fila, que representa el grano lógico del inventario.
+
+    Regla aplicada:
+    - Si una fila llega repetida con el mismo hash_fila, se conserva una sola.
+    - disponible y existencia se suman para no perder inventario cuando el SP
+      devuelve varias filas del mismo producto/bodega/talla/ubicación.
+    - Los demás atributos se conservan desde la primera aparición válida.
+    """
+    consolidadas: dict[str, dict] = {}
+    duplicadas = 0
+
+    for row in rows:
+        hash_fila = norm(row.get("hash_fila"))
+
+        if not hash_fila:
+            continue
+
+        if hash_fila not in consolidadas:
+            nueva = dict(row)
+            nueva["disponible"] = int(nueva.get("disponible") or 0)
+            nueva["existencia"] = int(nueva.get("existencia") or 0)
+            consolidadas[hash_fila] = nueva
+            continue
+
+        duplicadas += 1
+
+        actual = consolidadas[hash_fila]
+
+        actual["disponible"] = int(actual.get("disponible") or 0) + int(row.get("disponible") or 0)
+        actual["existencia"] = int(actual.get("existencia") or 0) + int(row.get("existencia") or 0)
+
+        # Conservamos valores descriptivos si la primera fila los traía vacíos.
+        for campo in [
+            "referencia_sku",
+            "ean",
+            "talla",
+            "bodega",
+            "linea",
+            "codigo_siesa",
+            "llave_naval",
+            "cod_dependencia",
+        ]:
+            if not norm(actual.get(campo)) and norm(row.get(campo)):
+                actual[campo] = row.get(campo)
+
+    return list(consolidadas.values()), duplicadas
+
 
 def chunk_list(arr, size):
     for i in range(0, len(arr), size):
@@ -65,18 +119,20 @@ def chunk_list(arr, size):
 
 
 def get_referencias_universo(repo: PostgresRepository) -> list[str]:
-    """
-    Universo de referencias a consultar.
-    Por ahora: referencias con ventas en los últimos 120 días.
-    """
     q = """
-    SELECT DISTINCT referencia_sku
-    FROM public.vw_ventas_movimientos_normalizados
-    WHERE fecha_movimiento >= (CURRENT_DATE - INTERVAL '120 days')
-      AND TRIM(COALESCE(referencia_sku,'')) <> '';
+        SELECT DISTINCT referencia_sku
+        FROM public.referencias_snapshot_actual
+        WHERE TRIM(COALESCE(referencia_sku, '')) <> ''
+        ORDER BY referencia_sku;
     """
+
     rows = repo.fetch_all(q, {})
-    return [r["referencia_sku"] for r in rows if r.get("referencia_sku")]
+
+    return [
+        row["referencia_sku"]
+        for row in rows
+        if row.get("referencia_sku")
+    ]
 
 
 def asegurar_tabla_staging(repo: PostgresRepository) -> None:
@@ -158,8 +214,9 @@ def insertar_lote_staging_bulk(repo: PostgresRepository, rows: list[dict]) -> in
     """
     Inserta un lote completo en inventario_actual_staging.
 
-    No se inserta directamente en inventario_actual porque esa tabla debe
-    conservar el último snapshot válido hasta que la nueva carga termine completa.
+    Las filas deben venir sin duplicados por hash_fila. Esto evita que
+    PostgreSQL intente resolver dos conflictos contra la misma clave dentro
+    del mismo INSERT masivo.
     """
     if not rows:
         return 0
@@ -248,21 +305,23 @@ def mapear_datos_api(item: dict) -> dict:
     }
 
 
-def llamar_api_inventario(
-    referencias: list[str],
-    timeout_sec: int = 120,
+def llamar_api_inventario_completo(
+    timeout_sec: int = 300,
     max_reintentos: int = 2,
 ) -> tuple[list[dict], bool]:
     """
-    Llama la API de inventario.
+    Llama la API de inventario en modo completo.
 
-    Mejora importante:
-    Si la API responde 500, se imprime el body de respuesta para diagnosticar.
-    Eso ayuda a saber si falló SQL Server, la consulta, el DTO o el backend.
+    Este modo replica la lógica base del Excel:
+    - ejecutar el SP de inventario
+    - filtrar únicamente por bodegas permitidas
+    - devolver el inventario completo para alimentar inventario_actual
     """
     url = f"{settings.SQLSERVER_API_URL}/api/sqlserver/inventario-existencias/consultar"
+
     body = {
-        "referenciasSku": referencias
+        "modoInventarioCompleto": True,
+        "maxFilas": 200000
     }
 
     ultimo_error = None
@@ -277,7 +336,7 @@ def llamar_api_inventario(
                     f"API inventario respondió HTTP {r.status_code}. "
                     f"Intento={intento}. "
                     f"URL={url}. "
-                    f"Refs={len(referencias)}. "
+                    f"ModoInventarioCompleto=True. "
                     f"Respuesta={response_text}"
                 )
 
@@ -311,52 +370,52 @@ def main():
     logger = setup_logger("inventario_job")
     repo = PostgresRepository(settings.POSTGRES_DSN)
 
-    refs = get_referencias_universo(repo)
-    logger.info(f"Universo referencias: {len(refs)}")
+    timeout = int(os.getenv("INV_API_TIMEOUT", "300"))
 
-    if not refs:
-        raise SystemExit("No hay referencias en el universo. Revisa criterio de universo.")
-
-    batch_size = int(os.getenv("INV_BATCH_SIZE", "200"))
-    timeout = int(os.getenv("INV_API_TIMEOUT", "120"))
-
-    logger.info(f"Config: INV_BATCH_SIZE={batch_size} INV_API_TIMEOUT={timeout}")
+    logger.info(f"Config: MODO_INVENTARIO_COMPLETO=True INV_API_TIMEOUT={timeout}")
 
     asegurar_tabla_staging(repo)
     limpiar_staging(repo)
     logger.info("inventario_actual_staging truncada correctamente antes de iniciar la carga.")
 
-    total_insertadas = 0
-    total_batches = math.ceil(len(refs) / batch_size)
+    t0 = datetime.now()
+    logger.info("Llamando API de inventario en modo completo...")
 
-    for idx, batch in enumerate(chunk_list(refs, batch_size), start=1):
-        t0 = datetime.now()
-        logger.info(f"Lote {idx}/{total_batches}: refs={len(batch)} -> llamando API...")
+    datos, truncado = llamar_api_inventario_completo(timeout_sec=timeout)
 
-        datos, truncado = llamar_api_inventario(batch, timeout_sec=timeout)
-        logger.info(f"Lote {idx}/{total_batches}: API filas={len(datos)} truncado={truncado}")
+    logger.info(
+        f"API inventario completo: filas={len(datos)} truncado={truncado}"
+    )
 
-        if truncado:
-            raise SystemExit(
-                f"API devolvió truncado=true. Reduce INV_BATCH_SIZE. "
-                f"Lote size={len(batch)}. "
-                "No se reemplazó inventario_actual."
-            )
-
-        filas = []
-        for it in datos:
-            row = mapear_datos_api(it)
-            row["hash_fila"] = build_hash_fila(row)
-            filas.append(row)
-
-        ins = insertar_lote_staging_bulk(repo, filas)
-        total_insertadas += ins
-
-        dt = (datetime.now() - t0).total_seconds()
-        logger.info(
-            f"Lote {idx}/{total_batches}: insertadas_staging={ins} "
-            f"acumulado_staging={total_insertadas} tiempo_s={dt:.2f}"
+    if truncado:
+        raise SystemExit(
+            "API devolvió truncado=true en modo inventario completo. "
+            "Aumenta maxFilas en el body de la API o revisa el volumen real antes de reemplazar inventario_actual."
         )
+
+    filas = []
+
+    for it in datos:
+        row = mapear_datos_api(it)
+        row["hash_fila"] = build_hash_fila(row)
+        filas.append(row)
+
+    filas_consolidadas, duplicadas = consolidar_filas_por_hash(filas)
+
+    logger.info(
+        f"Consolidación inventario: filas_api={len(filas)} "
+        f"filas_consolidadas={len(filas_consolidadas)} "
+        f"duplicadas={duplicadas}"
+    )
+
+    total_insertadas = insertar_lote_staging_bulk(repo, filas_consolidadas)
+
+    dt = (datetime.now() - t0).total_seconds()
+
+    logger.info(
+        f"Inventario completo insertado en staging. "
+        f"insertadas_staging={total_insertadas} tiempo_s={dt:.2f}"
+    )
 
     filas_staging = contar_filas_staging(repo)
 

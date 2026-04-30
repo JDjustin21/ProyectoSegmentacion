@@ -66,15 +66,16 @@
           </a>
         </li>
         <li class="nav-item">
-          <a class="nav-link text-white" href="#">
+          <a class="nav-link {% if request.path.startswith(url_for('agotados.vista_analiticas')) %}active{% endif %}"
+            href="{{ url_for('agotados.vista_analiticas') }}">
             <span class="nav-text">Analíticas</span>
           </a>
         </li>
-        <li>
-        <a class="nav-link {% if request.path.startswith(url_for('segmentacion.vista_utilidades')) %}active{% endif %}"
-        href="{{ url_for('segmentacion.vista_utilidades') }}">
-          <span class="nav-text">Utilidades</span>
-        </a>
+        <li class="nav-item">
+          <a class="nav-link {% if request.path.startswith(url_for('segmentacion.vista_utilidades')) %}active{% endif %}"
+            href="{{ url_for('segmentacion.vista_utilidades') }}">
+            <span class="nav-text">Utilidades</span>
+          </a>
         </li>
         {% if (session.get("rol") or "").lower() == "admin" %}
         <li class="nav-item">
@@ -85,11 +86,11 @@
         </li>
         {% endif %}
         {% if session.get("user_id") %}
-          <div class="px-2 pb-3">
+          <li class="nav-item px-2 pb-3">
             <a class="nav-link text-white" href="{{ url_for('auth.logout') }}">
               <span class="nav-text">Salir</span>
             </a>
-          </div>
+          </li>
         {% endif %}
       </ul>
     </nav>

@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}Analíticas de Agotados{% endblock %}
+
+{% block content %}
+
+<div id="analiticasLoadingToast" class="analiticas-loading-toast d-none">
+  <span class="analiticas-loading-dot"></span>
+  Actualizando dashboard...
+</div>
+
+<div
+  id="analiticasAgotadosApp"
+  class="container-fluid py-4 analiticas-page"
+  data-api-dashboard-url="{{ url_for('agotados.api_dashboard_agotados') }}"
+>
+  <!-- ENCABEZADO -->
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">Analíticas de Agotados</h2>
+      <p class="text-muted mb-0">
+        Seguimiento de agotados sobre referencias segmentadas por punto de venta, referencia, línea y talla.
+      </p>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button id="btnActualizarAgotados" class="btn btn-dark">
+        Actualizar
+      </button>
+      <button id="btnLimpiarFiltrosAgotados" class="btn btn-outline-secondary">
+        Limpiar filtros
+      </button>
+    </div>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="card shadow-sm border-0 mb-4 analiticas-filtros-card">
+    <div class="card-body">
+      <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-1 mb-3">
+        <h5 class="fw-bold mb-0">Filtros</h5>
+        <small id="agotadosMetaTexto" class="text-muted analiticas-meta-text">Sin cargar</small>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-12 col-md-3">
+          <label class="form-label">Línea</label>
+          <input id="filtroLineaAgotados" class="form-control" list="listaAgotadosLineas" placeholder="Ej: 10 - Dama Exterior">
+          <datalist id="listaAgotadosLineas"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Cuentos</label>
+          <input id="filtroCuentoAgotados" class="form-control" list="listaAgotadosCuentos" placeholder="Ej: 395 - Nórdico">
+          <datalist id="listaAgotadosCuentos"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Referencia SKU</label>
+          <input id="filtroReferenciaAgotados" class="form-control" list="listaAgotadosReferencias" placeholder="Ej: 106715-01 | 643">
+          <datalist id="listaAgotadosReferencias"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Cliente</label>
+          <input id="filtroClienteAgotados" class="form-control" list="listaAgotadosClientes" placeholder="Ej: ALMACENES EXITO S.A.">
+          <datalist id="listaAgotadosClientes"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Punto de venta</label>
+          <input id="filtroTiendaAgotados" class="form-control" list="listaAgotadosTiendas" placeholder="Ej: EXITO IBAGUE">
+          <datalist id="listaAgotadosTiendas"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Ciudad</label>
+          <input id="filtroCiudadAgotados" class="form-control" list="listaAgotadosCiudades" placeholder="Ej: MEDELLÍN">
+          <datalist id="listaAgotadosCiudades"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Zona</label>
+          <input id="filtroZonaAgotados" class="form-control" list="listaAgotadosZonas" placeholder="Ej: ANTIOQUIA">
+          <datalist id="listaAgotadosZonas"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Clasificación</label>
+          <input id="filtroClasificacionAgotados" class="form-control" list="listaAgotadosClasificaciones" placeholder="Ej: AA, A, B">
+          <datalist id="listaAgotadosClasificaciones"></datalist>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIS -->
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card border-0 shadow-sm kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Tallas segmentadas</div>
+          <div id="kpiTallasSegmentadas" class="kpi-value">0</div>
+          <div class="kpi-help">Base evaluada del dashboard</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card border-0 shadow-sm kpi-card kpi-danger">
+        <div class="card-body">
+          <div class="kpi-label">Tallas agotadas</div>
+          <div id="kpiTallasAgotadas" class="kpi-value">0</div>
+          <div class="kpi-help">Disponible nulo o menor/igual a cero</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card border-0 shadow-sm kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">% agotado</div>
+          <div id="kpiPorcentajeAgotado" class="kpi-value">0%</div>
+          <div class="kpi-help">Sobre tallas segmentadas</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+      <div class="card border-0 shadow-sm kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Puntos de venta con agotado</div>
+          <div id="kpiTiendasAgotado" class="kpi-value">0</div>
+          <div class="kpi-help">Tiendas con al menos un agotado</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GRÁFICOS SIMPLES -->
+  <!-- CUERPO DEL DASHBOARD -->
+  <div class="analiticas-dashboard-grid">
+
+    <!-- AGOTADOS POR LÍNEA -->
+    <div class="card border-0 shadow-sm dashboard-card area-linea">
+      <div class="card-header dashboard-card-header">
+        Agotados por línea
+      </div>
+      <div class="card-body">
+        <div id="chartAgotadosLinea" class="simple-chart chart-compact"></div>
+      </div>
+    </div>
+
+    <!-- AGOTADOS POR TALLA -->
+    <div class="card border-0 shadow-sm dashboard-card area-talla">
+      <div class="card-header dashboard-card-header">
+        Agotados por talla
+      </div>
+      <div class="card-body">
+        <div id="chartAgotadosTalla" class="simple-chart chart-compact"></div>
+      </div>
+    </div>
+
+    <!-- AGOTADOS POR ZONA -->
+    <div class="card border-0 shadow-sm dashboard-card area-zona">
+      <div class="card-header dashboard-card-header">
+        Agotados por zona
+      </div>
+      <div class="card-body">
+        <div id="chartAgotadosZona" class="donut-chart"></div>
+      </div>
+    </div>
+
+    <!-- AGOTADOS POR CLASIFICACIÓN -->
+    <div class="card border-0 shadow-sm dashboard-card area-clasificacion">
+      <div class="card-header dashboard-card-header">
+        Agotados por clasificación
+      </div>
+      <div class="card-body">
+        <div id="chartAgotadosClasificacion" class="donut-chart"></div>
+      </div>
+    </div>
+
+    <!-- AGOTADOS POR PUNTO DE VENTA -->
+    <div class="card border-0 shadow-sm dashboard-card area-tiendas">
+      <div class="card-header dashboard-card-header">
+        Agotados por punto de venta
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive analiticas-table-wrap table-wrap-tiendas">
+          <table class="table table-sm table-hover align-middle mb-0 tabla-analitica tabla-tiendas">
+            <thead>
+              <tr>
+                <th>Punto de venta</th>
+                <th class="text-end">Seg.</th>
+                <th class="text-end">Agot.</th>
+                <th class="text-end">%</th>
+              </tr>
+            </thead>
+            <tbody id="tablaTiendasAgotados">
+              <tr>
+                <td colspan="4" class="text-center text-muted py-4">
+                  Sin datos cargados
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOP REFERENCIAS -->
+    <div class="card border-0 shadow-sm dashboard-card area-referencias">
+      <div class="card-header dashboard-card-header">
+        Top referencias con agotados
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive analiticas-table-wrap table-wrap-referencias">
+          <table class="table table-sm table-hover align-middle mb-0 tabla-analitica tabla-referencias">
+            <thead>
+              <tr>
+                <th>Referencia</th>
+                <th>Descripción</th>
+                <th>Línea</th>
+                <th class="text-end">Seg.</th>
+                <th class="text-end">Agot.</th>
+                <th class="text-end">%</th>
+              </tr>
+            </thead>
+            <tbody id="tablaTopReferenciasAgotados">
+              <tr>
+                <td colspan="6" class="text-center text-muted py-4">
+                  Sin datos cargados
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- DETALLE -->
+    <div class="card border-0 shadow-sm dashboard-card dashboard-card-detalle area-detalle">
+      <div class="card-header dashboard-card-header">
+        Detalle de agotados
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive analiticas-table-wrap detalle-wrap">
+          <table class="table table-sm table-striped align-middle mb-0 tabla-analitica tabla-detalle">
+            <thead>
+              <tr>
+                <th>Referencia</th>
+                <th>Descripción</th>
+                <th>Talla</th>
+                <th>Punto de venta</th>
+                <th>Ciudad</th>
+                <th>Zona</th>
+                <th class="text-end">Seg.</th>
+                <th class="text-end">Disp.</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="tablaDetalleAgotados">
+              <tr>
+                <td colspan="9" class="text-center text-muted py-4">
+                  Sin datos cargados
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script src="{{ url_for('static', filename='js/analiticas.js') }}"></script>
+
+{% endblock %}

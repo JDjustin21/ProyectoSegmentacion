@@ -1,0 +1,17 @@
+[27/04/2026 11:37:54.39] INICIO LOG tiendas_siesa_job
+[27/04/2026 11:37:54.42] INICIO tiendas_siesa_job.py 
+[27/04/2026 11:37:54.42] SOURCE=\\svr-fs\CREYTEX\GESTION FINANCIERA\BI\4. Tablas Maestras\9. Maestra de Tiendas\MAESTRA_TIENDAS.txt 
+Traceback (most recent call last):
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\tiendas_siesa_job.py", line 186, in <module>
+    main()
+    ~~~~^^
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\tiendas_siesa_job.py", line 152, in main
+    conn = open_pg(args.pg_dsn)
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\tiendas_siesa_job.py", line 32, in open_pg
+    return psycopg2.connect(dsn)
+           ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "10.10.20.247", port 5432 failed: FATAL:  no pg_hba.conf entry for host "10.10.40.81", user "postgres", database "ProyectoSegmentacion", no encryption
+
+[27/04/2026 11:37:55.35] ERROR tiendas_siesa_job rc=1 log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\tiendas_siesa_job.log 

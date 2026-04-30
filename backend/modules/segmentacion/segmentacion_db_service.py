@@ -492,10 +492,17 @@ class SegmentacionDbService:
                     WHERE COALESCE(s.linea, '') = %(linea)s
                     ORDER BY s.referencia, s.fecha_creacion DESC
                 )
-                SELECT id_segmentacion, referencia
-                FROM ultimas
-                ORDER BY referencia;
+                SELECT
+                    u.id_segmentacion,
+                    u.referencia,
+                    COALESCE(r.tallas_conteo_json, '{}'::jsonb) AS tallas_conteo_json,
+                    COALESCE(r.codigos_barras_por_talla_json, '{}'::jsonb) AS codigos_barras_por_talla_json
+                FROM ultimas u
+                LEFT JOIN public.referencias_snapshot_actual r
+                    ON r.referencia_sku = u.referencia
+                ORDER BY u.referencia;
             """, {"linea": linea})
+
             destinos = cur.fetchall() or []
 
             actualizadas = 0
@@ -513,14 +520,49 @@ class SegmentacionDbService:
                     omitidas += 1
                     continue
 
-                # 3) Obtener las tallas que vienen en la plantilla
-                tallas_plantilla = {
-                    (fila["talla"] or "").strip()
-                    for fila in plantilla
-                    if (fila.get("talla") or "").strip()
+                tallas_destino = dest.get("tallas_conteo_json") or {}
+                codigos_destino = dest.get("codigos_barras_por_talla_json") or {}
+
+                if not isinstance(tallas_destino, dict):
+                    tallas_destino = {}
+
+                if not isinstance(codigos_destino, dict):
+                    codigos_destino = {}
+
+                tallas_validas_destino = {
+                    (talla or "").strip()
+                    for talla in tallas_destino.keys()
+                    if (talla or "").strip()
                 }
 
-                # 4) Inactivar SOLO las tallas actuales de esa tienda que ya no estén en la plantilla
+                filas_a_copiar = []
+
+                for fila in plantilla:
+                    talla = (fila.get("talla") or "").strip()
+                    if not talla:
+                        continue
+
+                    if talla not in tallas_validas_destino:
+                        continue
+
+                    codigo_barras_destino = (codigos_destino.get(talla) or "").strip()
+
+                    if not codigo_barras_destino:
+                        continue
+
+                    filas_a_copiar.append({
+                        "talla": talla,
+                        "cantidad": int(fila.get("cantidad") or 0),
+                        "codigo_barras": codigo_barras_destino,
+                    })
+
+                if not filas_a_copiar:
+                    omitidas += 1
+                    continue
+
+                tallas_copiadas = [fila["talla"] for fila in filas_a_copiar]
+
+                # Inactivar solo las tallas que ya no aplican para esa tienda en esa referencia.
                 cur.execute("""
                     UPDATE segmentacion_detalle
                     SET
@@ -528,22 +570,15 @@ class SegmentacionDbService:
                         fecha_actualizacion = %(now)s
                     WHERE id_segmentacion = %(id_seg)s
                     AND llave_naval = %(llave)s
-                    AND talla <> ALL(%(tallas_plantilla)s);
+                    AND talla <> ALL(%(tallas_copiadas)s);
                 """, {
                     "id_seg": id_seg_dest,
                     "llave": llave,
-                    "tallas_plantilla": list(tallas_plantilla),
+                    "tallas_copiadas": tallas_copiadas,
                     "now": now
                 })
 
-                # 5) Upsert de las tallas de la plantilla:
-                #    si ya existe esa talla para esa tienda/referencia -> UPDATE
-                #    si no existe -> INSERT
-                for fila in plantilla:
-                    talla = (fila.get("talla") or "").strip()
-                    if not talla:
-                        continue
-
+                for fila in filas_a_copiar:
                     cur.execute("""
                         INSERT INTO segmentacion_detalle (
                             id_segmentacion,
@@ -572,9 +607,9 @@ class SegmentacionDbService:
                     """, {
                         "id_seg": id_seg_dest,
                         "llave": llave,
-                        "talla": talla,
-                        "cantidad": int(fila.get("cantidad") or 0),
-                        "codigo_barras": (fila.get("codigo_barras") or None),
+                        "talla": fila["talla"],
+                        "cantidad": fila["cantidad"],
+                        "codigo_barras": fila["codigo_barras"],
                         "now": now
                     })
 
