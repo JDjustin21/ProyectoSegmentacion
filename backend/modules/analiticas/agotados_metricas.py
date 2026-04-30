@@ -29,7 +29,7 @@ def construir_dashboard_agotados(
             "por_zona": _agrupar_por(datos, "zona"),
             "por_clasificacion": _agrupar_por(datos, "clasificacion"),
             "por_tienda": _agrupar_por(datos, "desc_dependencia"),
-            "top_referencias": _top_referencias(datos, limite=10),
+            "referencias_con_agotados": _referencias_con_agotados(datos),
             "detalle": _detalle_limitado(datos, limite=500),
         },
         "meta": {
@@ -56,14 +56,11 @@ def _to_float(valor: Any) -> Optional[float]:
 
 
 def _disponible_para_agotado(fila: Dict[str, Any]) -> float:
-    """
-    Regla de negocio para agotados.
+    disponible_calculado = _to_float(fila.get("disponible_calculado"))
 
-    En este módulo solo analizamos referencias segmentadas.
-    Si una referencia/talla/tienda está segmentada y no cruza con inventario,
-    disponible_talla viene NULL. Comercialmente eso se interpreta como 0,
-    por lo tanto cuenta como agotado.
-    """
+    if disponible_calculado is not None:
+        return disponible_calculado
+
     disponible = _to_float(fila.get("disponible_talla"))
 
     if disponible is None:
@@ -73,10 +70,9 @@ def _disponible_para_agotado(fila: Dict[str, Any]) -> float:
 
 
 def _es_agotado(fila: Dict[str, Any]) -> bool:
-    """
-    Una fila segmentada está agotada cuando su disponible calculado
-    es menor o igual a cero.
-    """
+    if "es_agotado" in fila and fila.get("es_agotado") is not None:
+        return bool(fila.get("es_agotado"))
+
     return _disponible_para_agotado(fila) <= 0
 
 
@@ -128,6 +124,13 @@ def _calcular_kpis(datos: List[Dict[str, Any]]) -> Dict[str, Any]:
         for fila in datos
         if fila.get("referencia_sku")
     }
+    referencias_unicas = {
+        fila.get("referencia_sku")
+        for fila in datos
+        if fila.get("referencia_sku")
+    }
+
+    total_referencias = len(referencias_unicas)
 
     referencias_con_agotado = {
         fila.get("referencia_sku")
@@ -219,55 +222,73 @@ def _agrupar_por(datos: List[Dict[str, Any]], campo: str) -> List[Dict[str, Any]
         reverse=True,
     )
 
-
-def _top_referencias(
+def _referencias_con_agotados(
     datos: List[Dict[str, Any]],
-    limite: int = 10,
+    limite: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
+    """
+    Agrupa el dashboard a nivel de referencia SKU.
+
+    Esta tabla no representa un top limitado por defecto.
+    Su objetivo es mostrar el resumen por referencia:
+    - Referencia
+    - Descripción
+    - Color
+    - Cantidad segmentada
+    - Cantidad agotada
+    - Porcentaje agotado
+
+    La cantidad agotada se calcula sobre la cantidad segmentada,
+    no sobre el número de filas.
+    """
     grupos = defaultdict(lambda: {
         "referencia_sku": "",
         "descripcion": "",
-        "linea": "",
-        "cuento": "",
-        "total_segmentado": 0,
-        "total_con_dato_inventario": 0,
-        "total_con_disponible_nulo": 0,
-        "total_agotado": 0,
+        "color": "",
+        "codigo_color": "",
+        "cantidad_segmentada": 0,
+        "cantidad_agotada": 0,
+        "total_filas": 0,
+        "total_filas_agotadas": 0,
     })
 
     for fila in datos:
         referencia_sku = fila.get("referencia_sku") or "Sin referencia"
+        cantidad = int(fila.get("cantidad_segmentada") or 0)
 
         grupo = grupos[referencia_sku]
+
         grupo["referencia_sku"] = referencia_sku
         grupo["descripcion"] = fila.get("descripcion") or ""
-        grupo["linea"] = fila.get("linea") or ""
-        grupo["cuento"] = fila.get("cuento") or ""
+        grupo["color"] = fila.get("color") or ""
+        grupo["codigo_color"] = fila.get("codigo_color") or ""
 
-        grupo["total_segmentado"] += 1
-
-        if _tiene_dato_inventario(fila):
-            grupo["total_con_dato_inventario"] += 1
-        else:
-            grupo["total_con_disponible_nulo"] += 1
+        grupo["cantidad_segmentada"] += cantidad
+        grupo["total_filas"] += 1
 
         if _es_agotado(fila):
-            grupo["total_agotado"] += 1
+            grupo["cantidad_agotada"] += cantidad
+            grupo["total_filas_agotadas"] += 1
 
     salida = []
 
     for item in grupos.values():
         item["porcentaje_agotado"] = _porcentaje(
-            item["total_agotado"],
-            item["total_segmentado"],
+            item["cantidad_agotada"],
+            item["cantidad_segmentada"],
         )
         salida.append(item)
 
-    return sorted(
+    salida = sorted(
         salida,
-        key=lambda x: (x["total_agotado"], x["porcentaje_agotado"]),
+        key=lambda x: (x["cantidad_agotada"], x["porcentaje_agotado"]),
         reverse=True,
-    )[:limite]
+    )
+
+    if limite is not None:
+        return salida[:limite]
+
+    return salida
 
 
 def _detalle_limitado(

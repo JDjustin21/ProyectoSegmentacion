@@ -99,6 +99,8 @@ class ReferenciasSnapshotService:
             self._validar_staging(refresh_id=refresh_id, expected_count=loaded_count)
             promoted_count = self._promover_a_actual(refresh_id=refresh_id)
 
+            segmentacion_sync_count = self._sincronizar_estado_segmentacion_desde_snapshot()
+
             svc_pg = SegmentacionDbService(
                 self._repo,
                 POSTGRES_TIENDAS_VIEW,
@@ -124,6 +126,7 @@ class ReferenciasSnapshotService:
                 "source_count": source_count,
                 "loaded_count": loaded_count,
                 "promoted_count": promoted_count,
+                "segmentacion_sync_count": segmentacion_sync_count,
                 "synced_count": synced_count,
                 "duration_ms": duration_ms,
             }
@@ -187,6 +190,18 @@ class ReferenciasSnapshotService:
                 "cuento": self._pick_str(r, "cuento", "Cuento"),
                 "precio_unitario": self._pick_decimal(r, "precio_unitario", "precioUnitario", "PrecioUnitario"),
                 "fecha_creacion": self._pick_datetime(r, "fecha_creacion", "fechaCreacion", "FechaCreacion"),
+                "fch_act_portafolio": self._pick_date(
+                    r,
+                    "fch_act_portafolio",
+                    "fchActPortafolio",
+                    "FchActPortafolio",
+                ),
+                "clase_agotados": self._pick_str(
+                    r,
+                    "clase_agotados",
+                    "claseAgotados",
+                    "ClaseAgotados",
+                ),
                 "cantidad_tallas": self._pick_int(r, "cantidad_tallas", "cantidadTallas", "CantidadTallas"),
                 "tallas": self._pick_str(r, "tallas", "Tallas"),
                 "tallas_conteo_json": self._pick_json(r, "tallas_conteo", "tallasConteo", "TallasConteo"),
@@ -339,6 +354,8 @@ class ReferenciasSnapshotService:
                 cuento,
                 precio_unitario,
                 fecha_creacion,
+                fch_act_portafolio,
+                clase_agotados,
                 cantidad_tallas,
                 tallas,
                 tallas_conteo_json,
@@ -361,6 +378,8 @@ class ReferenciasSnapshotService:
                 %(cuento)s,
                 %(precio_unitario)s,
                 %(fecha_creacion)s,
+                %(fch_act_portafolio)s,
+                %(clase_agotados)s,
                 %(cantidad_tallas)s,
                 %(tallas)s,
                 %(tallas_conteo_json)s::jsonb,
@@ -438,6 +457,8 @@ class ReferenciasSnapshotService:
                     cuento,
                     precio_unitario,
                     fecha_creacion,
+                    fch_act_portafolio,
+                    clase_agotados,
                     cantidad_tallas,
                     tallas,
                     tallas_conteo_json,
@@ -460,6 +481,8 @@ class ReferenciasSnapshotService:
                     cuento,
                     precio_unitario,
                     fecha_creacion,
+                    fch_act_portafolio,
+                    clase_agotados,
                     cantidad_tallas,
                     tallas,
                     tallas_conteo_json,
@@ -480,6 +503,40 @@ class ReferenciasSnapshotService:
                 )
 
             return promoted_count
+
+        return int(self._repo.run_in_transaction(_tx))
+    
+    def _sincronizar_estado_segmentacion_desde_snapshot(self) -> int:
+        """
+        Sincroniza en public.segmentacion los atributos comerciales que deben
+        mantenerse vigentes con la referencia actual.
+
+        Regla de negocio:
+        - segmentacion conserva tiendas, tallas, cantidades y estado_segmentacion.
+        - tipo_portafolio y estado_sku NO se manejan como histórico.
+        - referencias_snapshot_actual es la fuente vigente para esos dos campos.
+
+        Retorna:
+        - cantidad de filas actualizadas en public.segmentacion.
+        """
+
+        def _tx(cur):
+            cur.execute(
+                """
+                UPDATE public.segmentacion s
+                SET
+                    tipo_portafolio = r.tipo_portafolio,
+                    estado_sku = r.estado
+                FROM public.referencias_snapshot_actual r
+                WHERE r.referencia_sku = s.referencia
+                AND (
+                        COALESCE(s.tipo_portafolio, '') <> COALESCE(r.tipo_portafolio, '')
+                        OR COALESCE(s.estado_sku, '') <> COALESCE(r.estado, '')
+                    );
+                """
+            )
+
+            return cur.rowcount or 0
 
         return int(self._repo.run_in_transaction(_tx))
 
@@ -532,6 +589,30 @@ class ReferenciasSnapshotService:
 
         try:
             return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except Exception:
+            return None
+        
+    @classmethod
+    def _pick_date(cls, data: Dict[str, Any], *keys: str):
+        """
+        Lee una fecha desde la API y la devuelve como date.
+
+        La API puede serializar fechas como:
+        - date/datetime nativo
+        - string ISO
+        - string con Z
+        """
+        value = cls._pick_raw(data, *keys)
+
+        if value in (None, ""):
+            return None
+
+        if isinstance(value, datetime):
+            return value.date()
+
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return parsed.date()
         except Exception:
             return None
 

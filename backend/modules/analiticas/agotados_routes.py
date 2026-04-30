@@ -87,3 +87,44 @@ def api_dashboard_agotados():
             "ok": False,
             "error": "No fue posible calcular el dashboard de agotados."
         }), 500
+    
+@agotados_bp.post("/api/agotados/refrescar-base")
+@login_required
+def api_refrescar_base_agotados():
+    """
+    Refresca la materialized view usada por el dashboard de agotados.
+    Esta acción recalcula la base analítica completa.
+    """
+    t0 = time.perf_counter()
+
+    try:
+        repo = _pg_repo()
+        svc = _svc_agotados(repo)
+
+        result = svc.refrescar_base_agotados()
+
+        t1 = time.perf_counter()
+
+        current_app.logger.info(
+            "[ANALITICAS][AGOTADOS_REFRESH_BASE] total_ms=%.2f filas=%s",
+            (t1 - t0) * 1000,
+            result.get("total_filas", 0),
+        )
+
+        return jsonify({
+            "ok": True,
+            "data": result,
+        })
+
+    except Exception as ex:
+        current_app.logger.error(
+            "[ANALITICAS][AGOTADOS_REFRESH_BASE][ERROR] %s\n%s",
+            str(ex),
+            traceback.format_exc(),
+        )
+
+        return jsonify({
+            "ok": False,
+            "error": "No fue posible refrescar la base de agotados.",
+            "detalle": str(ex),
+        }), 500

@@ -17,11 +17,22 @@
       throw new Error("Falta configuración: data-api-dashboard-url en #analiticasAgotadosApp");
     }
 
+    const apiRefreshBaseUrl = (app.dataset.apiRefreshBaseUrl || "").trim();
+
+    if (!apiRefreshBaseUrl) {
+      throw new Error("Falta configuración: data-api-refresh-base-url en #analiticasAgotadosApp");
+    }
+
     const $ = (selector) => document.querySelector(selector);
 
     const state = {
       loading: false,
       lastData: null,
+      tableSort: {
+        referencias: { key: "", dir: "asc" },
+        tiendas: { key: "", dir: "asc" },
+        detalle: { key: "", dir: "asc" },
+      },
     };
 
     const charts = {
@@ -39,23 +50,41 @@
 
     function bindEventos() {
 
+      document.querySelectorAll("input[name='filtroClaseAgotados']").forEach((radio) => {
+        radio.addEventListener("change", () => {
+          cargarDashboardAgotados();
+        });
+      });
+
       document.addEventListener("click", (event) => {
-      const row = event.target.closest(".clickable-row");
-      if (!row) return;
+        const sortableHeader = event.target.closest("th[data-sort-table][data-sort-key]");
 
-      const tipo = row.dataset.filtroTipo || "";
-      const valor = row.dataset.filtroValor || "";
+        if (sortableHeader) {
+          event.preventDefault();
 
-      if (!valor) return;
+          const tableKey = sortableHeader.dataset.sortTable || "";
+          const sortKey = sortableHeader.dataset.sortKey || "";
 
-      if (tipo === "referencia") {
-        aplicarFiltroDesdeGrafico("#filtroReferenciaAgotados", valor);
-      }
+          aplicarOrdenTabla(tableKey, sortKey);
+          return;
+        }
 
-      if (tipo === "tienda") {
-        aplicarFiltroDesdeGrafico("#filtroTiendaAgotados", valor);
-      }
-    });
+        const row = event.target.closest(".clickable-row");
+        if (!row) return;
+
+        const tipo = row.dataset.filtroTipo || "";
+        const valor = row.dataset.filtroValor || "";
+
+        if (!valor) return;
+
+        if (tipo === "referencia") {
+          aplicarFiltroDesdeGrafico("#filtroReferenciaAgotados", valor);
+        }
+
+        if (tipo === "tienda") {
+          aplicarFiltroDesdeGrafico("#filtroTiendaAgotados", valor);
+        }
+      });
     
       $("#btnActualizarAgotados")?.addEventListener("click", () => {
         cargarDashboardAgotados();
@@ -64,6 +93,10 @@
       $("#btnLimpiarFiltrosAgotados")?.addEventListener("click", () => {
         limpiarFiltros();
         cargarDashboardAgotados();
+      });
+
+      $("#btnRefrescarBaseAgotados")?.addEventListener("click", async () => {
+        await refrescarBaseAgotados();
       });
 
       const refetchDebounced = debounce(() => {
@@ -76,7 +109,7 @@
         "#filtroReferenciaAgotados",
         "#filtroClienteAgotados",
         "#filtroTiendaAgotados",
-        "#filtroCiudadAgotados",
+        "#filtroTipoPortafolioAgotados",
         "#filtroZonaAgotados",
         "#filtroClasificacionAgotados",
       ];
@@ -154,22 +187,54 @@
       return json;
     }
 
+    async function refrescarBaseAgotados() {
+      if (state.loading) return;
+
+      const confirmar = window.confirm(
+        "Esto recalculará la base de agotados. Puede tardar algunos segundos. ¿Deseas continuar?"
+      );
+
+      if (!confirmar) return;
+
+      state.loading = true;
+      setLoading(true, "Refrescando base...");
+
+      try {
+        const json = await fetchJson(apiRefreshBaseUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        });
+
+        console.log("[ANALITICAS][REFRESH_BASE]", json.data);
+
+        await cargarDashboardAgotados();
+      } catch (error) {
+        console.error("[ANALITICAS][REFRESH_BASE]", error);
+        mostrarError(error.message || "Error refrescando base de agotados.");
+      } finally {
+        state.loading = false;
+        setLoading(false);
+      }
+    }
+
     // =========================================================
     // 3) Filtros
     // =========================================================
-    function obtenerFiltros() {
+   function obtenerFiltros() {
+      const claseAgotados =
+        document.querySelector("input[name='filtroClaseAgotados']:checked")?.value || "";
+
       return {
         linea: valor("#filtroLineaAgotados"),
         cuento: valor("#filtroCuentoAgotados"),
         referencia_sku: valor("#filtroReferenciaAgotados"),
-
-        // Cliente = razón social / dependencia comercial del punto de venta.
         cliente: valor("#filtroClienteAgotados"),
-
-        // Punto de venta = tienda específica.
         dependencia: valor("#filtroTiendaAgotados"),
-
-        ciudad: valor("#filtroCiudadAgotados"),
+        tipo_portafolio: valor("#filtroTipoPortafolioAgotados"),
+        clase_agotados: claseAgotados,
         zona: valor("#filtroZonaAgotados"),
         clasificacion: valor("#filtroClasificacionAgotados"),
       };
@@ -186,13 +251,16 @@
         "#filtroReferenciaAgotados",
         "#filtroClienteAgotados",
         "#filtroTiendaAgotados",
-        "#filtroCiudadAgotados",
+        "#filtroTipoPortafolioAgotados",
         "#filtroZonaAgotados",
         "#filtroClasificacionAgotados",
       ].forEach((selector) => {
         const input = $(selector);
         if (input) input.value = "";
       });
+
+      const claseTodos = $("#filtroClaseTodos");
+      if (claseTodos) claseTodos.checked = true;
     }
 
     // =========================================================
@@ -201,6 +269,7 @@
     function pintarDashboard(data, meta) {
       const kpis = data.kpis || {};
 
+      setText("#kpiReferenciasSegmentadas", formatoNumero(kpis.total_referencias_sku));
       setText("#kpiTallasSegmentadas", formatoNumero(kpis.total_tallas_segmentadas));
       setText("#kpiTallasAgotadas", formatoNumero(kpis.total_tallas_agotadas));
       setText("#kpiPorcentajeAgotado", formatoPorcentaje(kpis.porcentaje_agotado_tallas));
@@ -213,6 +282,7 @@
         "#agotadosMetaTexto",
         `${formatoNumero(registros)} registros · ${regla}`
       );
+
 
       pintarGraficoBarrasInteractivo({
         chartKey: "linea",
@@ -227,7 +297,7 @@
         selector: "#chartAgotadosTalla",
         rows: data.por_talla || [],
         campo: "talla",
-        filtroSelector: "null",
+        filtroSelector: null,
       });
 
       pintarGraficoDonutInteractivo({
@@ -246,11 +316,146 @@
         filtroSelector: "#filtroClasificacionAgotados",
       });
 
-      pintarTopReferencias(data.top_referencias || []);
+      
+      pintarReferenciasConAgotados(
+        data.referencias_con_agotados || data.top_referencias || []
+      );
       pintarTiendas(data.por_tienda || []);
       pintarDetalle(data.detalle || []);
 
       actualizarDatalistsAgotados(data);
+    }
+
+    function aplicarOrdenTabla(tableKey, sortKey) {
+      if (!state.tableSort[tableKey]) return;
+
+      const current = state.tableSort[tableKey];
+
+      if (current.key === sortKey) {
+        current.dir = current.dir === "asc" ? "desc" : "asc";
+      } else {
+        current.key = sortKey;
+        current.dir = "asc";
+      }
+
+      repintarTabla(tableKey);
+      actualizarIndicadoresOrden();
+    }
+
+    function repintarTabla(tableKey) {
+      const data = state.lastData?.data || {};
+
+      if (tableKey === "referencias") {
+        pintarReferenciasConAgotados(
+          data.referencias_con_agotados || data.top_referencias || []
+        );
+        return;
+      }
+
+      if (tableKey === "tiendas") {
+        pintarTiendas(data.por_tienda || []);
+        return;
+      }
+
+      if (tableKey === "detalle") {
+        pintarDetalle(data.detalle || []);
+        return;
+      }
+    }
+
+    function ordenarRows(rows, tableKey) {
+      const sort = state.tableSort[tableKey];
+
+      if (!sort || !sort.key) {
+        return Array.isArray(rows) ? [...rows] : [];
+      }
+
+      const dirFactor = sort.dir === "desc" ? -1 : 1;
+
+      return [...rows].sort((a, b) => {
+        const av = obtenerValorOrden(a, sort.key);
+        const bv = obtenerValorOrden(b, sort.key);
+
+        return compararValores(av, bv) * dirFactor;
+      });
+    }
+
+    function obtenerValorOrden(row, key) {
+      if (!row) return "";
+
+      if (key === "punto_venta") {
+        return (
+          row.desc_dependencia ||
+          row.dependencia ||
+          row.punto_venta ||
+          row.llave_naval ||
+          row.tienda ||
+          ""
+        );
+      }
+
+      if (key === "cantidad_segmentada") {
+        return row.cantidad_segmentada ?? row.total_segmentado ?? 0;
+      }
+
+      if (key === "cantidad_agotada") {
+        return row.cantidad_agotada ?? row.total_agotado ?? 0;
+      }
+
+      if (key === "total_segmentado") {
+        return row.total_segmentado ?? row.cantidad_segmentada ?? 0;
+      }
+
+      if (key === "total_agotado") {
+        return row.total_agotado ?? row.cantidad_agotada ?? 0;
+      }
+
+      if (key === "color") {
+        return row.color || row.codigo_color || "";
+      }
+
+      return row[key] ?? "";
+    }
+
+    function compararValores(a, b) {
+      const na = convertirNumeroSeguro(a);
+      const nb = convertirNumeroSeguro(b);
+
+      if (na !== null && nb !== null) {
+        return na - nb;
+      }
+
+      return String(a ?? "")
+        .trim()
+        .localeCompare(String(b ?? "").trim(), "es", {
+          numeric: true,
+          sensitivity: "base",
+        });
+    }
+
+    function convertirNumeroSeguro(value) {
+      if (value === null || value === undefined || value === "") {
+        return null;
+      }
+
+      const n = Number(value);
+
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function actualizarIndicadoresOrden() {
+      document.querySelectorAll("th[data-sort-table][data-sort-key]").forEach((th) => {
+        const tableKey = th.dataset.sortTable || "";
+        const sortKey = th.dataset.sortKey || "";
+        const sort = state.tableSort[tableKey];
+
+        th.classList.remove("sort-asc", "sort-desc", "sort-active");
+
+        if (sort && sort.key === sortKey) {
+          th.classList.add("sort-active");
+          th.classList.add(sort.dir === "asc" ? "sort-asc" : "sort-desc");
+        }
+      });
     }
 
     function pintarBarras(selector, rows, campo) {
@@ -526,8 +731,10 @@
       cargarDashboardAgotados();
     }
 
-    function pintarTopReferencias(rows) {
-      const tbody = $("#tablaTopReferenciasAgotados");
+    function pintarReferenciasConAgotados(rows) {
+      const tbody =
+        $("#tablaReferenciasConAgotados")
+
       if (!tbody) return;
 
       if (!Array.isArray(rows) || rows.length === 0) {
@@ -535,16 +742,27 @@
         return;
       }
 
-      tbody.innerHTML = rows.slice(0, 15).map((row) => `
-        <tr class="clickable-row" data-filtro-tipo="referencia" data-filtro-valor="${escapeHtml(row.referencia_sku || "")}">
-          <td class="fw-semibold">${escapeHtml(row.referencia_sku || "")}</td>
-          <td>${escapeHtml(row.descripcion || "")}</td>
-          <td>${escapeHtml(row.linea || "")}</td>
-          <td class="text-end">${formatoNumero(row.total_segmentado)}</td>
-          <td class="text-end text-danger fw-semibold">${formatoNumero(row.total_agotado)}</td>
-          <td class="text-end">${formatoPorcentaje(row.porcentaje_agotado)}</td>
-        </tr>
-      `).join("");
+      const rowsOrdenadas = ordenarRows(rows, "referencias");
+
+      tbody.innerHTML = rowsOrdenadas.map((row) => {
+        const referencia = row.referencia_sku || "";
+        const descripcion = row.descripcion || "";
+        const color = row.color || row.codigo_color || "";
+        const cantidadSegmentada = row.cantidad_segmentada ?? row.total_segmentado ?? 0;
+        const cantidadAgotada = row.cantidad_agotada ?? row.total_agotado ?? 0;
+        const porcentaje = row.porcentaje_agotado ?? 0;
+
+        return `
+          <tr class="clickable-row" data-filtro-tipo="referencia" data-filtro-valor="${escapeHtml(referencia)}">
+            <td class="fw-semibold">${escapeHtml(referencia)}</td>
+            <td>${escapeHtml(descripcion)}</td>
+            <td>${escapeHtml(color)}</td>
+            <td class="text-end">${formatoNumero(cantidadSegmentada)}</td>
+            <td class="text-end text-danger fw-semibold">${formatoNumero(cantidadAgotada)}</td>
+            <td class="text-end">${formatoPorcentaje(porcentaje)}</td>
+          </tr>
+        `;
+      }).join("");
     }
 
     function pintarTiendas(rows) {
@@ -556,7 +774,9 @@
             return;
         }
 
-        tbody.innerHTML = rows.slice(0, 20).map((row) => {
+        const rowsOrdenadas = ordenarRows(rows, "tiendas");
+
+        tbody.innerHTML = rowsOrdenadas.slice(0, 20).map((row) => {
             const nombreTienda =
             row.desc_dependencia ||
             row.dependencia ||
@@ -581,11 +801,13 @@
       if (!tbody) return;
 
       if (!Array.isArray(rows) || rows.length === 0) {
-        tbody.innerHTML = filaVacia(9);
+        tbody.innerHTML = filaVacia(10);
         return;
       }
 
-      tbody.innerHTML = rows.slice(0, 200).map((row) => {
+      const rowsOrdenadas = ordenarRows(rows, "detalle");
+
+      tbody.innerHTML = rowsOrdenadas.slice(0, 200).map((row) => {
         const agotado = Boolean(row.es_agotado);
         const estadoClass = agotado ? "badge text-bg-danger" : "badge text-bg-success";
 
@@ -593,6 +815,7 @@
           <tr>
             <td class="fw-semibold">${escapeHtml(row.referencia_sku || "")}</td>
             <td>${escapeHtml(row.descripcion || "")}</td>
+            <td>${escapeHtml(row.color || row.codigo_color || "")}</td>
             <td>${escapeHtml(row.talla || "")}</td>
             <td>${escapeHtml(row.desc_dependencia || row.dependencia || "")}</td>
             <td>${escapeHtml(row.ciudad || "")}</td>
@@ -608,17 +831,24 @@
     // =========================================================
     // 5) Estados visuales y helpers
     // =========================================================
-    function setLoading(isLoading) {
+    function setLoading(isLoading, message = "Actualizando dashboard...") {
       const btn = $("#btnActualizarAgotados");
       const toast = $("#analiticasLoadingToast");
 
       if (btn) {
         btn.disabled = isLoading;
-        btn.textContent = isLoading ? "Actualizando..." : "Actualizar";
+        btn.textContent = isLoading ? "Actualizando..." : "Actualizar vista";
+      }
+
+      const btnRefresh = $("#btnRefrescarBaseAgotados");
+      if (btnRefresh) {
+        btnRefresh.disabled = isLoading;
       }
 
       if (toast) {
         toast.classList.toggle("d-none", !isLoading);
+        const textNode = toast.querySelector(".analiticas-loading-text");
+        if (textNode) textNode.textContent = message;
       }
     }
 
@@ -636,13 +866,13 @@
         talla.innerHTML = `<div class="text-danger text-center py-4">${escapeHtml(message)}</div>`;
       }
 
-      const topRefs = $("#tablaTopReferenciasAgotados");
+      const topRefs = $("#tablaReferenciasConAgotados");
       const tiendas = $("#tablaTiendasAgotados");
       const detalle = $("#tablaDetalleAgotados");
 
       if (topRefs) topRefs.innerHTML = filaVacia(6, message);
       if (tiendas) tiendas.innerHTML = filaVacia(4, message);
-      if (detalle) detalle.innerHTML = filaVacia(9, message);
+      if (detalle) detalle.innerHTML = filaVacia(10, message);
     }
     function norm(v) {
       return (v || "").toString().trim();
@@ -708,7 +938,9 @@
       const detalle = Array.isArray(data.detalle) ? data.detalle : [];
       const porLinea = Array.isArray(data.por_linea) ? data.por_linea : [];
       const porTalla = Array.isArray(data.por_talla) ? data.por_talla : [];
-      const topReferencias = Array.isArray(data.top_referencias) ? data.top_referencias : [];
+      const referencias = Array.isArray(data.referencias_con_agotados)
+        ? data.referencias_con_agotados
+        : (Array.isArray(data.top_referencias) ? data.top_referencias : []);
 
       setDatalistOptions(
         "listaAgotadosLineas",
@@ -719,17 +951,17 @@
       );
 
       setDatalistOptions(
-        "listaAgotadosCuentos",
+        "listaAgotadosReferencias",
         [
-          ...topReferencias.map(x => x.cuento),
-          ...detalle.map(x => x.cuento),
+          ...referencias.map(x => x.referencia_sku),
+          ...detalle.map(x => x.referencia_sku),
         ]
       );
 
       setDatalistOptions(
         "listaAgotadosReferencias",
         [
-          ...topReferencias.map(x => x.referencia_sku),
+          ...referencias.map(x => x.referencia_sku),
           ...detalle.map(x => x.referencia_sku),
         ]
       );
@@ -745,8 +977,8 @@
       );
 
       setDatalistOptions(
-        "listaAgotadosCiudades",
-        detalle.map(x => x.ciudad)
+        "listaAgotadosTipoPortafolio",
+        detalle.map(x => x.tipo_portafolio)
       );
 
       setDatalistOptions(

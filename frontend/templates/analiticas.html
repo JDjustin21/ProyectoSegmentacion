@@ -6,13 +6,14 @@
 
 <div id="analiticasLoadingToast" class="analiticas-loading-toast d-none">
   <span class="analiticas-loading-dot"></span>
-  Actualizando dashboard...
+  <span class="analiticas-loading-text">Actualizando dashboard...</span>
 </div>
 
 <div
   id="analiticasAgotadosApp"
   class="container-fluid py-4 analiticas-page"
   data-api-dashboard-url="{{ url_for('agotados.api_dashboard_agotados') }}"
+  data-api-refresh-base-url="{{ url_for('agotados.api_refrescar_base_agotados') }}"
 >
   <!-- ENCABEZADO -->
   <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
@@ -25,7 +26,10 @@
 
     <div class="d-flex gap-2">
       <button id="btnActualizarAgotados" class="btn btn-dark">
-        Actualizar
+        Actualizar vista
+      </button>
+      <button id="btnRefrescarBaseAgotados" class="btn btn-outline-primary">
+        Refrescar datos base
       </button>
       <button id="btnLimpiarFiltrosAgotados" class="btn btn-outline-secondary">
         Limpiar filtros
@@ -73,9 +77,9 @@
         </div>
 
         <div class="col-12 col-md-3">
-          <label class="form-label">Ciudad</label>
-          <input id="filtroCiudadAgotados" class="form-control" list="listaAgotadosCiudades" placeholder="Ej: MEDELLÍN">
-          <datalist id="listaAgotadosCiudades"></datalist>
+          <label class="form-label">Tipo portafolio</label>
+          <input id="filtroTipoPortafolioAgotados" class="form-control" list="listaAgotadosTipoPortafolio" placeholder="Ej: Linea">
+          <datalist id="listaAgotadosTipoPortafolio"></datalist>
         </div>
 
         <div class="col-12 col-md-3">
@@ -89,13 +93,38 @@
           <input id="filtroClasificacionAgotados" class="form-control" list="listaAgotadosClasificaciones" placeholder="Ej: AA, A, B">
           <datalist id="listaAgotadosClasificaciones"></datalist>
         </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Clase agotados</label>
+          <div class="btn-group w-100 filtros-chip-group" role="group" aria-label="Filtro clase agotados">
+            <input type="radio" class="btn-check" name="filtroClaseAgotados" id="filtroClaseTodos" value="" checked>
+            <label class="btn btn-outline-secondary" for="filtroClaseTodos">Todos</label>
+
+            <input type="radio" class="btn-check" name="filtroClaseAgotados" id="filtroClaseActivo" value="Activo">
+            <label class="btn btn-outline-secondary" for="filtroClaseActivo">Activo</label>
+
+            <input type="radio" class="btn-check" name="filtroClaseAgotados" id="filtroClaseNuevo" value="Nuevo">
+            <label class="btn btn-outline-secondary" for="filtroClaseNuevo">Nuevo</label>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
 
   <!-- KPIS -->
   <div class="row g-3 mb-4">
-    <div class="col-12 col-md-6 col-xl-3">
+    <div class="col-12 col-md-6 col-xl">
+      <div class="card border-0 shadow-sm kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Referencias segmentadas</div>
+          <div id="kpiReferenciasSegmentadas" class="kpi-value">0</div>
+          <div class="kpi-help">Referencias SKU visibles</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl">
       <div class="card border-0 shadow-sm kpi-card">
         <div class="card-body">
           <div class="kpi-label">Tallas segmentadas</div>
@@ -105,7 +134,7 @@
       </div>
     </div>
 
-    <div class="col-12 col-md-6 col-xl-3">
+    <div class="col-12 col-md-6 col-xl">
       <div class="card border-0 shadow-sm kpi-card kpi-danger">
         <div class="card-body">
           <div class="kpi-label">Tallas agotadas</div>
@@ -115,7 +144,7 @@
       </div>
     </div>
 
-    <div class="col-12 col-md-6 col-xl-3">
+    <div class="col-12 col-md-6 col-xl">
       <div class="card border-0 shadow-sm kpi-card">
         <div class="card-body">
           <div class="kpi-label">% agotado</div>
@@ -125,7 +154,7 @@
       </div>
     </div>
 
-    <div class="col-12 col-md-6 col-xl-3">
+    <div class="col-12 col-md-6 col-xl">
       <div class="card border-0 shadow-sm kpi-card">
         <div class="card-body">
           <div class="kpi-label">Puntos de venta con agotado</div>
@@ -190,10 +219,10 @@
           <table class="table table-sm table-hover align-middle mb-0 tabla-analitica tabla-tiendas">
             <thead>
               <tr>
-                <th>Punto de venta</th>
-                <th class="text-end">Seg.</th>
-                <th class="text-end">Agot.</th>
-                <th class="text-end">%</th>
+                <th data-sort-table="tiendas" data-sort-key="punto_venta">Punto de venta</th>
+                <th class="text-end" data-sort-table="tiendas" data-sort-key="total_segmentado">Seg.</th>
+                <th class="text-end" data-sort-table="tiendas" data-sort-key="total_agotado">Agot.</th>
+                <th class="text-end" data-sort-table="tiendas" data-sort-key="porcentaje_agotado">Agot. %</th>
               </tr>
             </thead>
             <tbody id="tablaTiendasAgotados">
@@ -211,22 +240,22 @@
     <!-- TOP REFERENCIAS -->
     <div class="card border-0 shadow-sm dashboard-card area-referencias">
       <div class="card-header dashboard-card-header">
-        Top referencias con agotados
+        Referencias Con Agotados
       </div>
       <div class="card-body p-0">
         <div class="table-responsive analiticas-table-wrap table-wrap-referencias">
           <table class="table table-sm table-hover align-middle mb-0 tabla-analitica tabla-referencias">
             <thead>
               <tr>
-                <th>Referencia</th>
-                <th>Descripción</th>
-                <th>Línea</th>
-                <th class="text-end">Seg.</th>
-                <th class="text-end">Agot.</th>
-                <th class="text-end">%</th>
+                <th data-sort-table="referencias" data-sort-key="referencia_sku">Referencia</th>
+                <th data-sort-table="referencias" data-sort-key="descripcion">Descripción</th>
+                <th data-sort-table="referencias" data-sort-key="color">Color</th>
+                <th class="text-end" data-sort-table="referencias" data-sort-key="cantidad_segmentada">Cant.Segm.</th>
+                <th class="text-end" data-sort-table="referencias" data-sort-key="cantidad_agotada">Agot.</th>
+                <th class="text-end" data-sort-table="referencias" data-sort-key="porcentaje_agotado">Agot. %</th>
               </tr>
             </thead>
-            <tbody id="tablaTopReferenciasAgotados">
+            <tbody id="tablaReferenciasConAgotados">
               <tr>
                 <td colspan="6" class="text-center text-muted py-4">
                   Sin datos cargados
@@ -248,20 +277,21 @@
           <table class="table table-sm table-striped align-middle mb-0 tabla-analitica tabla-detalle">
             <thead>
               <tr>
-                <th>Referencia</th>
-                <th>Descripción</th>
-                <th>Talla</th>
-                <th>Punto de venta</th>
-                <th>Ciudad</th>
-                <th>Zona</th>
-                <th class="text-end">Seg.</th>
-                <th class="text-end">Disp.</th>
-                <th>Estado</th>
+                <th data-sort-table="detalle" data-sort-key="referencia_sku">Referencia</th>
+                <th data-sort-table="detalle" data-sort-key="descripcion">Descripción</th>
+                <th data-sort-table="detalle" data-sort-key="color">Color</th>
+                <th data-sort-table="detalle" data-sort-key="talla">Talla</th>
+                <th data-sort-table="detalle" data-sort-key="punto_venta">Punto de venta</th>
+                <th data-sort-table="detalle" data-sort-key="ciudad">Ciudad</th>
+                <th data-sort-table="detalle" data-sort-key="zona">Zona</th>
+                <th class="text-end" data-sort-table="detalle" data-sort-key="cantidad_segmentada">Seg.</th>
+                <th class="text-end" data-sort-table="detalle" data-sort-key="disponible_calculado">Disp.</th>
+                <th data-sort-table="detalle" data-sort-key="estado_agotado">Estado</th>
               </tr>
             </thead>
             <tbody id="tablaDetalleAgotados">
               <tr>
-                <td colspan="9" class="text-center text-muted py-4">
+                <td colspan="10" class="text-center text-muted py-4">
                   Sin datos cargados
                 </td>
               </tr>
