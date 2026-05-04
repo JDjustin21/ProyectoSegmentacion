@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Inventario{% endblock %}
+
+{% block content %}
+
+<div id="inventarioLoadingToast" class="analiticas-loading-toast d-none">
+  <span class="analiticas-loading-dot"></span>
+  <span class="analiticas-loading-text">Actualizando inventario...</span>
+</div>
+
+<div
+  id="inventarioApp"
+  class="container-fluid py-4 inventario-page"
+  data-api-dashboard-url="{{ url_for('inventario.api_dashboard_inventario') }}"
+  data-api-refresh-base-url="{{ url_for('inventario.api_refrescar_base_inventario') }}"
+  data-image-resolver-url="/segmentacion/api/imagenes/referencia"
+  data-placeholder-url="{{ url_for('static', filename='assets/images/placeholder.png') }}"
+  data-cards-per-page="24"
+>
+  <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">Inventario</h2>
+      <p class="text-muted mb-0">
+        Consulta visual del inventario por referencia SKU, disponibilidad, existencia y tallas disponibles.
+      </p>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button id="btnActualizarInventario" class="btn btn-dark">
+        Actualizar vista
+      </button>
+      <button id="btnRefrescarBaseInventario" class="btn btn-outline-primary">
+        Refrescar datos base
+      </button>
+      <button id="btnLimpiarInventario" class="btn btn-outline-secondary">
+        Limpiar filtros
+      </button>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-0 mb-4 filters-card">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-md-3">
+          <label class="form-label">Tipo portafolio</label>
+          <select id="filtroInvTipoPortafolio" class="form-select">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Línea comercial</label>
+          <select id="filtroInvLinea" class="form-select">
+            <option value="">Todas</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Estado</label>
+          <select id="filtroInvEstado" class="form-select">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Cuento</label>
+          <input id="filtroInvCuento" class="form-control" list="listaInvCuentos" placeholder="Ej: 395 - Nórdico">
+          <datalist id="listaInvCuentos"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Categoría</label>
+          <input id="filtroInvCategoria" class="form-control" list="listaInvCategorias" placeholder="Ej: Camiseta">
+          <datalist id="listaInvCategorias"></datalist>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label">Referencia SKU</label>
+          <input id="filtroInvReferencia" class="form-control" list="listaInvReferencias" placeholder="Ej: 106715-01 | 643">
+          <datalist id="listaInvReferencias"></datalist>
+        </div>
+
+        <div class="col-12 col-md-6 d-flex align-items-end justify-content-start justify-content-md-end gap-3 inv-filter-actions">
+            <div class="inv-pill">
+                <div class="form-check form-switch m-0">
+                <input
+                    id="filtroInvConInventario"
+                    class="form-check-input"
+                    type="checkbox"
+                    role="switch">
+                <label class="form-check-label" for="filtroInvConInventario">
+                    Con inventario
+                </label>
+                </div>
+            </div>
+
+            <div class="inv-pill">
+                <div class="form-check form-switch m-0">
+                <input
+                    id="filtroInvSinInventario"
+                    class="form-check-input"
+                    type="checkbox"
+                    role="switch">
+                <label class="form-check-label" for="filtroInvSinInventario">
+                    Sin inventario
+                </label>
+                </div>
+            </div>
+            </div>
+      </div>
+
+      <div class="mt-3">
+        <small id="inventarioMetaTexto" class="text-muted">Sin cargar</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-6 col-xl">
+      <div class="card border-0 shadow-sm kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Referencias totales</div>
+          <div id="kpiInvReferenciasTotales" class="kpi-value">0</div>
+          <div class="kpi-help">Universo visible</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl">
+      <div class="card border-0 shadow-sm kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Referencias con inventario</div>
+          <div id="kpiInvReferenciasConInventario" class="kpi-value">0</div>
+          <div class="kpi-help">Referencias SKU con disponible</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl">
+      <div class="card border-0 shadow-sm kpi-card kpi-danger">
+        <div class="card-body">
+          <div class="kpi-label">Referencias sin inventario</div>
+          <div id="kpiInvReferenciasSinInventario" class="kpi-value">0</div>
+          <div class="kpi-help">Disponible total igual a cero</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl">
+      <div class="card border-0 shadow-sm kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">SKU disponibles</div>
+          <div id="kpiInvSkuDisponibles" class="kpi-value">0</div>
+          <div class="kpi-help">Tallas/EAN con inventario</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl">
+      <div class="card border-0 shadow-sm kpi-card">
+        <div class="card-body">
+          <div class="kpi-label">Disponible total</div>
+          <div id="kpiInvDisponibleTotal" class="kpi-value">0</div>
+          <div class="kpi-help">Unidades disponibles</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="inventarioCardsContainer" class="products-grid"></div>
+
+  <div class="d-flex justify-content-center align-items-center gap-3 mt-4">
+    <button id="invPrevPage" class="btn btn-outline-secondary">Anterior</button>
+    <span id="invPageIndicator" class="fw-bold small">Página 1 de 1</span>
+    <button id="invNextPage" class="btn btn-outline-secondary">Siguiente</button>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/inventario.js') }}"></script>
+
+{% endblock %}

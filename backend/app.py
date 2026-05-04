@@ -6,6 +6,7 @@ from backend.modules.analiticas.agotados_routes import agotados_bp
 from flask import Flask
 from backend.config.settings import SECRET_KEY
 from backend.modules.admin.admin_routes import admin_bp
+from backend.modules.inventario.inventario_routes import inventario_bp
 import os
 
 def create_app():
@@ -20,11 +21,14 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
 
-    # Registrar el módulo de segmentación
+    # Registrar el módulo de Segmentación
     app.register_blueprint(segmentacion_bp)
 
-    # Registrar el módulo de analíticas
+    # Registrar el módulo de Analíticas
     app.register_blueprint(agotados_bp)
+
+    # Registrar el módulo de Inventario
+    app.register_blueprint(inventario_bp)
     
     return app
 
