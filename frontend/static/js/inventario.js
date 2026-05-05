@@ -19,9 +19,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!apiRefreshBaseUrl) throw new Error("Falta data-api-refresh-base-url en #inventarioApp");
   if (!imageResolverUrl) throw new Error("Falta data-image-resolver-url en #inventarioApp");
 
+  let requestSeq = 0;
   let referencias = [];
   let currentPage = 1;
   let totalPages = 1;
+  let catalogosCargados = false;
+  let catalogosInventario = {};
 
   const filtros = {
     tipo_portafolio: "",
@@ -30,9 +33,11 @@ document.addEventListener("DOMContentLoaded", () => {
     cuento: "",
     categoria: "",
     referencia_sku: "",
+    cliente: "",
+    punto_venta: "",
     solo_con_inventario: false,
     solo_sin_inventario: false,
-  };
+    };  
 
   const $ = (selector) => document.querySelector(selector);
 
@@ -76,51 +81,72 @@ document.addEventListener("DOMContentLoaded", () => {
     return json;
   }
 
-  async function cargarInventario() {
-    setLoading(true, "Actualizando inventario...");
+ async function cargarInventario() {
+  const requestId = ++requestSeq;
 
-    try {
-      const payload = obtenerFiltrosPayload();
+  setLoading(true, "Actualizando inventario...");
 
-      const json = await fetchJson(apiDashboardUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+  try {
+    const payload = obtenerFiltrosPayload();
 
-      referencias = Array.isArray(json.data?.referencias) ? json.data.referencias : [];
-      currentPage = 1;
+    const json = await fetchJson(apiDashboardUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-      pintarKpis(json.data?.kpis || {});
-      pintarMeta(json.meta || {});
-      actualizarFiltrosOpciones(referencias);
-      renderCards();
-    } catch (error) {
-      console.error(error);
-      cardsContainer.innerHTML = `
-        <div class="alert alert-danger w-100">
-          No fue posible cargar inventario. ${escapeHtml(error.message || "")}
-        </div>
-      `;
-    } finally {
+    // Si esta respuesta pertenece a una búsqueda vieja, se ignora.
+    if (requestId !== requestSeq) {
+      return;
+    }
+
+    referencias = Array.isArray(json.data?.referencias) ? json.data.referencias : [];
+    currentPage = 1;
+
+    pintarKpis(json.data?.kpis || {});
+    pintarMeta(json.meta || {});
+    if (json.data?.catalogos) {
+        catalogosInventario = json.data.catalogos;
+        catalogosCargados = true;
+    }
+
+    actualizarFiltrosOpciones(referencias, catalogosInventario);
+    renderCards();
+  } catch (error) {
+    if (requestId !== requestSeq) {
+      return;
+    }
+
+    console.error(error);
+    cardsContainer.innerHTML = `
+      <div class="alert alert-danger w-100">
+        No fue posible cargar inventario. ${escapeHtml(error.message || "")}
+      </div>
+    `;
+  } finally {
+    if (requestId === requestSeq) {
       setLoading(false);
     }
   }
+}
 
   function obtenerFiltrosPayload() {
     return {
-      tipo_portafolio: filtros.tipo_portafolio,
-      linea: filtros.linea,
-      estado: filtros.estado,
-      cuento: filtros.cuento,
-      categoria: filtros.categoria,
-      referencia_sku: filtros.referencia_sku,
-      solo_con_inventario: filtros.solo_con_inventario ? "true" : "",
-      solo_sin_inventario: filtros.solo_sin_inventario ? "true" : "",
-    };
-  }
+        tipo_portafolio: filtros.tipo_portafolio,
+        linea: filtros.linea,
+        estado: filtros.estado,
+        cuento: filtros.cuento,
+        categoria: filtros.categoria,
+        referencia_sku: filtros.referencia_sku,
+        cliente: filtros.cliente,
+        punto_venta: filtros.punto_venta,
+        solo_con_inventario: filtros.solo_con_inventario ? "true" : "",
+        solo_sin_inventario: filtros.solo_sin_inventario ? "true" : "",
+        incluir_catalogos: catalogosCargados ? "" : "true",
+        };
+    }
 
   function pintarKpis(kpis) {
     setText("#kpiInvReferenciasTotales", formatoNumero(kpis.referencias_totales));
@@ -174,11 +200,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function crearCardInventarioHTML(ref) {
     const referencia = norm(ref.referencia_sku);
     const descripcion = norm(ref.descripcion);
-    const categoria = norm(ref.categoria);
-    const linea = norm(ref.linea);
-    const cuento = norm(ref.cuento);
     const estado = norm(ref.estado);
-    const tipoPortafolio = norm(ref.tipo_portafolio);
     const color = norm(ref.color);
     const estadoInventario = norm(ref.estado_inventario);
 
@@ -224,14 +246,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
           <div class="product-name">${escapeHtml(descripcion || "Sin descripción")}</div>
 
-          <div class="product-meta">
+          <div class="product-meta inventory-meta-compact">
             <div><b>Color:</b> ${escapeHtml(color || "—")}</div>
-            <div><b>Tipo:</b> ${escapeHtml(tipoPortafolio || "—")}</div>
             <div><b>Estado:</b> <span class="badge ${badgeEstadoClass}">${escapeHtml(estado || "—")}</span></div>
-            <div><b>Línea:</b> ${escapeHtml(linea || "—")}</div>
-            <div><b>Cuento:</b> ${escapeHtml(cuento || "—")}</div>
-            <div><b>Categoría:</b> ${escapeHtml(categoria || "—")}</div>
-          </div>
+         </div>
 
           <div class="inventory-metrics">
             <div>
@@ -239,8 +257,8 @@ document.addEventListener("DOMContentLoaded", () => {
               <strong>${formatoNumero(existenciaTotal)}</strong>
             </div>
             <div>
-              <span>Disponible</span>
-              <strong>${formatoNumero(disponibleTotal)}</strong>
+                <span>Prom. tienda</span>
+                <strong>${formatoNumero(ref.promedio_tienda || 0)}</strong>
             </div>
             <div>
               <span>SKU disp.</span>
@@ -256,15 +274,37 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
   }
 
-  function actualizarFiltrosOpciones(dataset) {
-    llenarSelect("#filtroInvTipoPortafolio", dataset.map(x => x.tipo_portafolio), "Todos", filtros.tipo_portafolio);
-    llenarSelect("#filtroInvLinea", dataset.map(x => x.linea), "Todas", filtros.linea);
-    llenarSelect("#filtroInvEstado", dataset.map(x => x.estado), "Todos", filtros.estado);
+  function actualizarFiltrosOpciones(dataset, catalogos = {}) {
+    const rows = Array.isArray(dataset) ? dataset : [];
 
-    llenarDatalist("#listaInvCuentos", dataset.map(x => x.cuento));
-    llenarDatalist("#listaInvCategorias", dataset.map(x => x.categoria));
-    llenarDatalist("#listaInvReferencias", dataset.map(x => x.referencia_sku));
-  }
+    llenarSelect(
+        "#filtroInvTipoPortafolio",
+        catalogos.tipos_portafolio || rows.map(x => x.tipo_portafolio),
+        "Todos",
+        filtros.tipo_portafolio
+    );
+
+    llenarSelect(
+        "#filtroInvLinea",
+        catalogos.lineas || rows.map(x => x.linea),
+        "Todas",
+        filtros.linea
+    );
+
+    llenarSelect(
+        "#filtroInvEstado",
+        catalogos.estados || rows.map(x => x.estado),
+        "Todos",
+        filtros.estado
+    );
+
+    llenarDatalist("#listaInvCuentos", catalogos.cuentos || rows.map(x => x.cuento));
+    llenarDatalist("#listaInvCategorias", catalogos.categorias || rows.map(x => x.categoria));
+    llenarDatalist("#listaInvReferencias", catalogos.referencias || rows.map(x => x.referencia_sku));
+
+    llenarDatalist("#listaInvClientes", catalogos.clientes || []);
+    llenarDatalist("#listaInvPuntosVenta", catalogos.puntos_venta || []);
+    }
 
   function llenarSelect(selector, values, defaultLabel, selectedValue) {
     const el = $(selector);
@@ -327,6 +367,16 @@ document.addEventListener("DOMContentLoaded", () => {
       filtros.referencia_sku = norm(e.target.value);
       cargarInventario();
     }, 350));
+
+   $("#filtroInvCliente")?.addEventListener("input", debounce((e) => {
+        filtros.cliente = norm(e.target.value);
+        cargarInventario();
+    }, 500));
+
+    $("#filtroInvPuntoVenta")?.addEventListener("input", debounce((e) => {
+        filtros.punto_venta = norm(e.target.value);
+        cargarInventario();
+    }, 500));
 
     $("#filtroInvConInventario")?.addEventListener("change", (e) => {
       filtros.solo_con_inventario = e.target.checked === true;
@@ -414,6 +464,8 @@ document.addEventListener("DOMContentLoaded", () => {
     filtros.cuento = "";
     filtros.categoria = "";
     filtros.referencia_sku = "";
+    filtros.cliente = "";
+    filtros.punto_venta = "";
     filtros.solo_con_inventario = false;
     filtros.solo_sin_inventario = false;
 
@@ -424,6 +476,8 @@ document.addEventListener("DOMContentLoaded", () => {
       "#filtroInvCuento",
       "#filtroInvCategoria",
       "#filtroInvReferencia",
+      "#filtroInvCliente",
+    "#filtroInvPuntoVenta",
     ].forEach((selector) => {
       const el = $(selector);
       if (el) el.value = "";

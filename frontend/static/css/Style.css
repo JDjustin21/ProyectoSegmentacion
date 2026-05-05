@@ -3895,5 +3895,16 @@ body {
   }
 }
 
+
+.inventory-card .inventory-meta-compact {
+  grid-template-columns: 1fr;
+  gap: 0.3rem;
+}
+
+.inventory-card .inventory-meta-compact div {
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
 /*
 FIN STYLE.CSS
