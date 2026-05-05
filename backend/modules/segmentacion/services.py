@@ -1,51 +1,71 @@
 # backend/modules/segmentacion/services.py
 
-import requests
 import json
 from datetime import datetime
-from decimal import Decimal 
+from decimal import Decimal
+from typing import Any, Dict, List
 
-import re
-from typing import Any, Dict, List, Optional, Tuple
-from backend.config.settings import POSTGRES_DSN, POSTGRES_TIENDAS_VIEW, DEFAULT_TALLAS_MVP
-from backend.repositories.postgres_repository import PostgresRepository
+import requests
 
 
 class SegmentacionService:
     """
-    Servicio encargado de consumir la API de SQL Server.
-    No contiene lógica de negocio.
-    Solo obtiene datos.
+    Servicio de lectura de referencias desde la API C# / SQL Server.
+
+    Este servicio no alimenta directamente la pantalla principal de Segmentación.
+    Su uso actual está asociado al refresh del snapshot de referencias, donde la API
+    externa se consulta, se transforma y luego se carga en PostgreSQL.
+
+    La pantalla principal consume PostgreSQL, no la API remota en caliente.
     """
 
     def __init__(self, api_base_url: str):
-        self.api_base_url = api_base_url
+        """
+        Recibe la URL base de la API C#.
 
-    def obtener_referencias(self):
+        Ejemplos:
+        - Local: http://localhost:5031
+        - Servidor: http://cyt-0108/api
         """
-        Llama al endpoint de la API que devuelve las referencias.
-        Retorna una lista de referencias (JSON).
+        self.api_base_url = (api_base_url or "").rstrip("/")
+
+    def obtener_referencias(self) -> List[Dict[str, Any]]:
         """
+        Consulta el endpoint de referencias expuesto por la API C#.
+
+        SQLSERVER_API_URL debe ser la URL raíz del servicio C#, sin /api al final.
+        Ejemplos válidos:
+        - http://localhost:5031
+        - http://127.0.0.1:5001
+        """
+        if not self.api_base_url:
+            raise RuntimeError("No se configuró SQLSERVER_API_URL.")
 
         url = f"{self.api_base_url}/api/sqlserver/referencias/consultar"
 
         response = requests.post(url, timeout=30)
         response.raise_for_status()
 
-        def _json_safe(obj):
-            if isinstance(obj, (datetime,)):
-                return obj.isoformat()
-            if isinstance(obj, Decimal):
-                return float(obj)
-            return str(obj)
-
         data = response.json()
         datos = data.get("datos", [])
 
-        # “Re-serializa” para forzar compatibilidad JSON
-        datos = json.loads(json.dumps(datos, default=_json_safe))
+        if not isinstance(datos, list):
+            return []
 
-        return datos
+        return json.loads(json.dumps(datos, default=self._json_safe))
 
-    
-        
+    @staticmethod
+    def _json_safe(obj: Any) -> Any:
+        """
+        Convierte tipos especiales a valores serializables en JSON.
+
+        Esto protege el flujo cuando la API devuelve fechas, decimales u otros
+        valores que no siempre son compatibles directamente con JSON.
+        """
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+
+        if isinstance(obj, Decimal):
+            return float(obj)
+
+        return str(obj)

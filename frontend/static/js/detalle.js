@@ -123,9 +123,8 @@
     // Tiendas activas: toggles en ON dentro de la lista actual
     let activas = 0;
 
-    // “Unidades asignadas” según tu definición nueva:
-    // = cuántas tiendas están “segmentadas” en ese momento
-    // = activas y con al menos una talla > 0
+    // Unidades asignadas:
+    // suma de cantidades por talla en las tiendas activas de la lista actual.
     let unidadesAsignadas = 0;
 
     tiendas.forEach(t => {
@@ -174,7 +173,6 @@
       subtituloEl: document.getElementById("detalleRefSubtitulo"),
       imgEl: document.getElementById("detalleImg"),
       imgMsgEl: document.getElementById("detalleImgMsg"),
-      rankingLineaEl: document.getElementById("detalleRankingLinea"),
       footerInfoEl: document.getElementById("detalleFooterInfo"),
 
       tiendasActivasNumEl: document.getElementById("detalleTiendasActivasNum"),
@@ -207,7 +205,6 @@
   // =========================
   const state = {
     sessionStartIso: null,
-    fetchSeq: 0, // evita respuestas cruzadas
     metricas: {
       resumenByLlave: {},        // llave_naval -> { cpd_total, venta_promedio_mensual_total, ... }
       detalleByLlaveTalla: {},   // llave_naval -> talla -> [{ean, cpd, venta_promedio_mensual}, ...]
@@ -513,8 +510,6 @@
   // 6) Render: tiendas + tallas
   // =========================
   function renderTiendas(dom) {
-    console.time("[DETALLE] renderTiendas");
-
     const renderSeq = ++state.renderSeq;
 
     const tallas = Array.isArray(state.ref.tallasFinal) ? state.ref.tallasFinal : [];
@@ -551,7 +546,6 @@
         </div>
       `;
       updateFooterStats(dom);
-      console.timeEnd("[DETALLE] renderTiendas");
       return;
     }
 
@@ -599,7 +593,6 @@
       if (index < tiendas.length) {
         nextPaint(appendChunk);
       } else {
-        console.timeEnd("[DETALLE] renderTiendas");
       }
     }
 
@@ -642,11 +635,7 @@
     });
 
     const url = (`${API_TIENDAS}?${q}`).replace(/[\r\n]/g, "");
-    console.log("[DETALLE] GET tiendas:", JSON.stringify(url));
-
-    console.time("[DETALLE] tiendas fetch");
     const json = await fetchJson(url);
-    console.timeEnd("[DETALLE] tiendas fetch");
 
     if (!json.ok) {
       throw new Error(json.error || "Error consultando tiendas activas");
@@ -666,10 +655,7 @@
     }
 
     const url = `${API_METRICAS}?${usp.toString()}`;
-
-    console.time("[DETALLE] metricas fetch");
     const json = await fetchJson(url);
-    console.timeEnd("[DETALLE] metricas fetch");
 
     if (!json.ok) throw new Error(json.error || "Error consultando métricas");
 
@@ -680,8 +666,6 @@
     const participacionLineaArr = Array.isArray(data.participacionLineaPorTienda)
       ? data.participacionLineaPorTienda
       : [];
-
-    console.time("[DETALLE] metricas parse/map");
 
     // =========================
     // Existencia por talla (independiente)
@@ -765,7 +749,6 @@
       idSegmentacionActual: state.metricas?.idSegmentacionActual || null,
     };
 
-    console.timeEnd("[DETALLE] metricas parse/map");
     calcularYActualizarMetricas(dom);
   }
   // =========================
@@ -775,7 +758,6 @@
     const q = buildQuery({ referenciaSku: state.ref.referenciaSku });
     const url = `${API_ULTIMA}?${q}`;
     const json = await fetchJson(url);
-    console.timeEnd("[DETALLE] metricas fetch")
     
     if (!json.ok) return;
 
@@ -951,10 +933,6 @@
   // =========================
   // 10) Preset y limpiar
   // =========================
-  function limpiarCantidades() {
-    state.cantidades = {};
-  }
-
   function limpiarFiltros(dom) {
     if (dom.filtroDependencia) dom.filtroDependencia.value = "";
     if (dom.filtroZona) dom.filtroZona.value = "";
@@ -965,7 +943,6 @@
 
   function aplicarPresetDesdeSku(modo) {
     // modo: 'basico' (todas = 1) | 'curva' (M y L = 2, resto = 1)
-    console.log('Aplicando preset:', modo);  // Verifica que el valor de `modo` es correcto
     state.tiendas.forEach(t => {
       const llave = norm(t.llave_naval);
       if (!llave) return;
@@ -1190,7 +1167,6 @@
       dom.imgEl.src = imgUrl;
     }
 
-    if (dom.rankingLineaEl) dom.rankingLineaEl.textContent = "—";
 
     // Mostrar modal
     const modal = bootstrap.Modal.getOrCreateInstance(dom.modalEl);
@@ -1211,14 +1187,6 @@
       ]);
 
       renderTiendas(dom);
-      console.log("DOM copia:", {
-        wrap: !!dom.copyWrapEl,
-        select: !!dom.selectSegmentacionCandidata,
-        btn: !!dom.btnCopiarSegmentacion
-      });
-
-      console.log("Candidatas:", state.segmentacionesCandidatas);
-
       if (dom.copyWrapEl) {
         dom.copyWrapEl.style.display = "block";
       }
@@ -1364,23 +1332,29 @@
       }
     });
 
-    const menu = document.getElementById('detallePresetMenu');
-    dom.btnPresetSku?.addEventListener('click', (e) => {
+    const menu = document.getElementById("detallePresetMenu");
+
+    dom.btnPresetSku?.addEventListener("click", (e) => {
       e.stopPropagation();
-      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+      if (!menu) return;
+
+      menu.style.display = menu.style.display === "block" ? "none" : "block";
     });
 
-    menu?.addEventListener('click', (e) => {
-      const item = e.target.closest('[data-preset]');
+    menu?.addEventListener("click", (e) => {
+      const item = e.target.closest("[data-preset]");
       if (!item) return;
-      menu.style.display = 'none';
+
+      menu.style.display = "none";
       aplicarPresetDesdeSku(item.dataset.preset);
       renderTiendas(dom);
     });
 
-    dom.modalEl?.addEventListener('click', (e) => {
+    dom.modalEl?.addEventListener("click", (e) => {
+      if (!menu || !dom.btnPresetSku) return;
+
       if (!dom.btnPresetSku.contains(e.target)) {
-        menu.style.display = 'none';
+        menu.style.display = "none";
       }
     });
 

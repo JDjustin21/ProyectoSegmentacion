@@ -1,3 +1,5 @@
+#backend/modules/inventario/inventario_db_service.py
+
 from __future__ import annotations
 
 from typing import Any, Dict, List
@@ -7,19 +9,43 @@ from backend.repositories.postgres_repository import PostgresRepository
 
 class InventarioDbService:
     """
-    Servicio de datos para el módulo de Inventario.
+        Servicio de datos para el módulo de Inventario.
 
-    Regla de negocio:
-    - La pantalla trabaja a nivel referencia_sku.
-    - referencias_snapshot_actual define el universo total de referencias.
-    - inventario_actual define existencia/disponible por talla, tienda y EAN.
-    - La materialized view mv_inventario_resumen_referencia resume el inventario por referencia.
+        Responsabilidades:
+        - Consultar KPIs y referencias para el dashboard de inventario.
+        - Decidir si la consulta debe ir a una vista resumen o a una vista detalle.
+        - Refrescar las vistas materializadas usadas por el módulo.
+        - Cargar catálogos de filtros para el frontend.
+
+        Regla de negocio:
+        - La pantalla trabaja a nivel referencia_sku.
+        - referencias_snapshot_actual define el universo total de referencias.
+        - inventario_actual define existencia/disponible por talla, tienda y EAN.
+        - mv_inventario_resumen_referencia resume inventario por referencia.
+        - mv_inventario_base_detalle permite filtrar por cliente y punto de venta.
+
+        Decisión de rendimiento:
+        - Si no hay filtros de tienda, se usa mv_inventario_resumen_referencia.
+        - Si hay cliente o punto_venta, se usa mv_inventario_base_detalle.
     """
 
     def __init__(self, repo: PostgresRepository):
         self._repo = repo
 
     def obtener_dashboard(self, filtros: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Construye la respuesta principal del dashboard de inventario.
+
+        Dependiendo de los filtros recibidos, consulta:
+        - mv_inventario_resumen_referencia para consultas generales.
+        - mv_inventario_base_detalle cuando se filtra por cliente o punto de venta.
+
+        Retorna:
+        - data.kpis: indicadores agregados.
+        - data.referencias: listado de referencias con inventario.
+        - data.catalogos: valores disponibles para filtros, si se solicitan.
+        - meta: información técnica de la consulta.
+        """
         filtros_limpios = self._normalizar_filtros(filtros)
 
         usa_detalle = self._usa_base_detalle(filtros_limpios)
@@ -214,37 +240,6 @@ class InventarioDbService:
 
         return self._repo.fetch_all(sql, params)
 
-    def _calcular_kpis(self, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-        referencias_totales = len(rows)
-        referencias_con_inventario = 0
-        referencias_sin_inventario = 0
-        sku_disponibles = 0
-        disponible_total = 0
-        existencia_total = 0
-
-        for row in rows:
-            tiene_inventario = bool(row.get("tiene_inventario"))
-            disponible = int(row.get("disponible_total") or 0)
-            existencia = int(row.get("existencia_total") or 0)
-
-            if tiene_inventario:
-                referencias_con_inventario += 1
-            else:
-                referencias_sin_inventario += 1
-
-            sku_disponibles += int(row.get("sku_disponibles") or 0)
-            disponible_total += disponible
-            existencia_total += existencia
-
-        return {
-            "referencias_totales": referencias_totales,
-            "referencias_con_inventario": referencias_con_inventario,
-            "referencias_sin_inventario": referencias_sin_inventario,
-            "sku_disponibles": sku_disponibles,
-            "disponible_total": disponible_total,
-            "existencia_total": existencia_total,
-        }
-
 
     def _obtener_kpis_desde_resumen(self, filtros: Dict[str, str]) -> Dict[str, Any]:
         params: Dict[str, Any] = {}
@@ -330,6 +325,13 @@ class InventarioDbService:
         }
 
     def _normalizar_filtros(self, filtros: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Limpia y limita los filtros aceptados por el dashboard.
+
+        Esta función evita que el frontend envíe campos inesperados hacia la construcción
+        dinámica de condiciones SQL. Los nombres de columnas usados en SQL siguen
+        controlados por diccionarios internos, no por el payload del usuario.
+        """
         if not isinstance(filtros, dict):
             return {}
 
@@ -360,6 +362,12 @@ class InventarioDbService:
         filtros: Dict[str, str],
         params: Dict[str, Any],
     ) -> str:
+        """
+        Construye condiciones SQL para la vista resumen.
+
+        La vista resumen no tiene información a nivel tienda, por eso no acepta filtros
+        como cliente o punto_venta.
+        """
         condiciones: List[str] = []
 
         filtros_exactos = {
@@ -399,6 +407,12 @@ class InventarioDbService:
         filtros: Dict[str, str],
         params: Dict[str, Any],
     ) -> str:
+        """
+            Construye condiciones SQL para la vista detalle.
+
+            Esta ruta se usa cuando el usuario filtra por cliente o punto_venta,
+            campos que solo existen a nivel tienda.
+        """
         condiciones: List[str] = []
 
         filtros_exactos = {
@@ -431,42 +445,36 @@ class InventarioDbService:
 
     def refrescar_base(self) -> Dict[str, Any]:
         """
-        Refresca la materialized view de inventario.
-        Debe usarse después de correr el job de inventario o cuando se quiera recalcular la base.
+        Refresca las vistas materializadas de inventario.
+
+        Debe ejecutarse después del job de inventario o cuando se necesite recalcular
+        manualmente la información consultada por el dashboard.
         """
         self._repo.execute(
             "REFRESH MATERIALIZED VIEW public.mv_inventario_base_detalle;",
             {},
         )
 
+        self._repo.execute(
+            "REFRESH MATERIALIZED VIEW public.mv_inventario_resumen_referencia;",
+            {},
+        )
+
         rows = self._repo.fetch_all(
             """
-            WITH refs AS (
-                SELECT
-                    referencia_sku,
-                    SUM(COALESCE(existencia, 0)) AS existencia_total,
-                    SUM(COALESCE(disponible, 0)) AS disponible_total,
-                    COUNT(DISTINCT sku_key)
-                        FILTER (
-                            WHERE sku_key IS NOT NULL
-                            AND COALESCE(disponible, 0) > 0
-                        ) AS sku_disponibles
-                FROM public.mv_inventario_base_detalle
-                GROUP BY referencia_sku
-            )
             SELECT
-                COUNT(*) AS referencias_totales,
-                COUNT(*) FILTER (WHERE disponible_total > 0) AS referencias_con_inventario,
-                COUNT(*) FILTER (WHERE disponible_total <= 0) AS referencias_sin_inventario,
-                SUM(sku_disponibles) AS sku_disponibles,
-                SUM(disponible_total) AS disponible_total,
-                SUM(existencia_total) AS existencia_total
-            FROM refs;
+                COUNT(*)::integer AS referencias_totales,
+                COUNT(*) FILTER (WHERE tiene_inventario)::integer AS referencias_con_inventario,
+                COUNT(*) FILTER (WHERE NOT tiene_inventario)::integer AS referencias_sin_inventario,
+                COALESCE(SUM(sku_disponibles), 0)::integer AS sku_disponibles,
+                COALESCE(SUM(disponible_total), 0)::integer AS disponible_total,
+                COALESCE(SUM(existencia_total), 0)::integer AS existencia_total
+            FROM public.mv_inventario_resumen_referencia;
             """,
             {},
         )
 
-        return rows[0] if rows else {}
+        return rows[0] if rows else self._kpis_vacios()
     
     def _obtener_catalogos(self) -> Dict[str, Any]:
         """

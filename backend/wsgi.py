@@ -2,5 +2,5 @@
 
 from backend.app import create_app
 
-# WSGI callable que Waitress/IIS reverse proxy van a usar
+# Punto de entrada WSGI usado por Waitress u otro servidor compatible.
 app = create_app()

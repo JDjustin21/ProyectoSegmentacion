@@ -12,15 +12,16 @@ class AgotadosDbService:
     """
     Servicio de datos para Analíticas de Agotados.
 
-    Responsabilidad:
-    - consultar Postgres
-    - traer únicamente referencias segmentadas activas
-    - entregar un dataset base para calcular KPIs
+    Responsabilidades:
+    - Consultar la base analítica materializada de agotados.
+    - Aplicar filtros enviados por el frontend.
+    - Delegar el cálculo de KPIs y agrupaciones a agotados_metricas.py.
+    - Refrescar la materialized view cuando se requiera recalcular la base.
 
-    Regla de negocio de esta primera versión:
-    - solo se analizan referencias segmentadas
-    - el grano es referencia_sku + tienda + talla
-    - el inventario usado es disponible_talla
+    Regla de negocio:
+    - Solo se analizan referencias previamente segmentadas.
+    - El grano del análisis es referencia_sku + tienda + talla.
+    - disponible_talla NULL se interpreta como 0 para clasificar agotados.
     """
 
     def __init__(
@@ -154,6 +155,14 @@ class AgotadosDbService:
         filtros: Dict[str, str],
         params: Dict[str, Any],
     ) -> str:
+        
+        """
+        Construye las condiciones SQL para la base de agotados.
+
+        Los nombres de columnas no vienen del frontend. Se toman de diccionarios
+        internos para evitar SQL dinámico inseguro. El frontend solo aporta valores,
+        que se envían como parámetros.
+        """
         condiciones: List[str] = []
 
         filtros_exactos = {

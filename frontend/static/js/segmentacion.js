@@ -1,6 +1,5 @@
-  // frontend/js/segmentacion.js
+// frontend/static/js/segmentacion.js
   document.addEventListener("DOMContentLoaded", () => {
-    console.log("JS de segmentación cargado");
 
     // =========================================================
     // 1) Configuración desde el HTML (data-attributes)
@@ -467,7 +466,6 @@
 
     filtroLinea?.addEventListener("change", async e => {
       filtros.linea = norm(e.target.value);
-      console.log("[COPIAR TIENDA] línea seleccionada:", filtros.linea);
 
       filtros.categoria = "";
       filtros.referencia = "";
@@ -476,8 +474,6 @@
 
       try {
         await cargarTiendasCandidatasCopiar();
-        console.log("[COPIAR TIENDA] candidatas:", tiendasCandidatasCopiar);
-        console.log("[COPIAR TIENDA] botón disabled:", btnCopiarTienda?.disabled);
       } catch (err) {
         console.error("Error cargando tiendas candidatas:", err);
       }
@@ -509,6 +505,12 @@
 
     filtroSoloSegmentadas?.addEventListener("change", e => {
       filtros.soloSegmentadas = e.target.checked === true;
+
+      if (filtros.soloSegmentadas) {
+        filtros.soloNoSegmentadas = false;
+        if (filtroSoloNoSegmentadas) filtroSoloNoSegmentadas.checked = false;
+      }
+
       currentPage = 1;
       render();
     });
@@ -684,31 +686,7 @@
       });
     }
 
-    function exportHoyGlobal() {
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, "0");
-      const dd = String(today.getDate()).padStart(2, "0");
-      const fecha = `${yyyy}-${mm}-${dd}`;
 
-      window.location.href = `/segmentacion/api/export/csv?${buildQuery({ fecha })}`;
-    }
-
-    function exportSesionGlobal() {
-      const desde = pageSessionStartIso;
-      const hasta = new Date().toISOString();
-      window.location.href = `/segmentacion/api/export/csv?${buildQuery({ desde, hasta })}`;
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-    const btnExportAll = document.getElementById("btnExportAllGlobal");
-    if (btnExportAll) {
-      btnExportAll.addEventListener("click", () => {
-        // Exporta TODO lo guardado (Postgres)
-        window.location.href = "/segmentacion/api/segmentaciones/export/excel";
-      });
-    }
-  });
 
   btnCopiarTienda?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -799,8 +777,8 @@
     });
 
     document.getElementById("btnExportSegmentaciones")?.addEventListener("click", () => {
-    window.location.href = "/segmentacion/api/export/csv";
-  });
+      window.location.href = "/segmentacion/api/export/csv";
+    });
 
     // =========================================================
     // 13) Doble click (MVP: resolver tallas finales)

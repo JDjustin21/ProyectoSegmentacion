@@ -50,7 +50,9 @@
         </div>
       </div>
     </div>
-<!-- REINICIAR SEGMENTACIONES -->
+    
+    {% if (session.get("rol") or "").lower() == "admin" %}
+    <!-- REINICIAR SEGMENTACIONES -->
     <div class="col-12 col-lg-6">
       <div class="card shadow-sm border-danger">
         <div class="card-body">
@@ -67,11 +69,13 @@
         </div>
       </div>
     </div>
+    {% endif %}
 
   </div>
 </div>
 
 <!-- Modal confirmación reset -->
+{% if (session.get("rol") or "").lower() == "admin" %}
 <div class="modal fade" id="modalResetSeg" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="border-radius:16px;">
@@ -89,6 +93,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 
 <script>

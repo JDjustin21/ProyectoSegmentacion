@@ -1,9 +1,20 @@
 // frontend/static/js/analiticas.js
+//
+// Controla el dashboard de Analíticas de Agotados.
+// Responsabilidades:
+// - Leer URLs configuradas desde analiticas.html mediante data-*.
+// - Consultar el endpoint de dashboard.
+// - Renderizar KPIs, gráficos, tablas y datalists.
+// - Aplicar filtros desde inputs, gráficos y filas clickeables.
+// - Ordenar tablas en frontend.
+// - Refrescar manualmente la base materializada de agotados.
+//
+// La lógica de negocio vive en backend/modules/analiticas.
+// Este archivo solo administra interacción, renderizado y estado visual.
 (() => {
   "use strict";
 
   document.addEventListener("DOMContentLoaded", () => {
-    console.log("JS de analíticas cargado");
 
     const app = document.getElementById("analiticasAgotadosApp");
 
@@ -200,24 +211,22 @@
       setLoading(true, "Refrescando base...");
 
       try {
-        const json = await fetchJson(apiRefreshBaseUrl, {
+        await fetchJson(apiRefreshBaseUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({}),
         });
-
-        console.log("[ANALITICAS][REFRESH_BASE]", json.data);
-
-        await cargarDashboardAgotados();
       } catch (error) {
         console.error("[ANALITICAS][REFRESH_BASE]", error);
         mostrarError(error.message || "Error refrescando base de agotados.");
+        return;
       } finally {
         state.loading = false;
-        setLoading(false);
       }
+
+      await cargarDashboardAgotados();
     }
 
     // =========================================================
@@ -458,39 +467,6 @@
       });
     }
 
-    function pintarBarras(selector, rows, campo) {
-      const cont = $(selector);
-      if (!cont) return;
-
-      if (!Array.isArray(rows) || rows.length === 0) {
-        cont.innerHTML = `<div class="text-muted text-center py-4">Sin datos</div>`;
-        return;
-      }
-
-      const top = rows.slice(0, 4);
-      const max = Math.max(...top.map((r) => Number(r.total_agotado || 0)), 1);
-
-      cont.innerHTML = top.map((row) => {
-        const etiqueta = escapeHtml(row[campo] || "Sin clasificar");
-        const agotado = Number(row.total_agotado || 0);
-        const segmentado = Number(row.total_segmentado || 0);
-        const pct = Number(row.porcentaje_agotado || 0);
-        const width = Math.max((agotado / max) * 100, 4);
-
-        return `
-          <div class="bar-row">
-            <div class="bar-info">
-              <span class="bar-label" title="${etiqueta}">${etiqueta}</span>
-              <span class="bar-value">${formatoPorcentaje(pct)} · ${formatoNumero(agotado)}/${formatoNumero(segmentado)}</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill" style="width:${width}%"></div>
-            </div>
-          </div>
-        `;
-      }).join("");
-    }
-
     function pintarGraficoBarrasInteractivo({ chartKey, selector, rows, campo, filtroSelector }) {
       const el = $(selector);
       if (!el) return;
@@ -526,6 +502,8 @@
           },
           events: {
             dataPointSelection: function (_event, _chartContext, config) {
+              if (!filtroSelector) return;
+
               const index = config.dataPointIndex;
               const valorFiltro = categorias[index];
               aplicarFiltroDesdeGrafico(filtroSelector, valorFiltro);
@@ -937,30 +915,35 @@
     function actualizarDatalistsAgotados(data) {
       const detalle = Array.isArray(data.detalle) ? data.detalle : [];
       const porLinea = Array.isArray(data.por_linea) ? data.por_linea : [];
-      const porTalla = Array.isArray(data.por_talla) ? data.por_talla : [];
+      const porCuento = Array.isArray(data.por_cuento) ? data.por_cuento : [];
+      const porReferencia = Array.isArray(data.por_referencia_sku) ? data.por_referencia_sku : [];
+
       const referencias = Array.isArray(data.referencias_con_agotados)
         ? data.referencias_con_agotados
         : (Array.isArray(data.top_referencias) ? data.top_referencias : []);
 
+      const catalogos = data.catalogos || {};
+
       setDatalistOptions(
         "listaAgotadosLineas",
-        [
+        catalogos.lineas || [
           ...porLinea.map(x => x.linea),
           ...detalle.map(x => x.linea),
         ]
       );
 
       setDatalistOptions(
-        "listaAgotadosReferencias",
-        [
-          ...referencias.map(x => x.referencia_sku),
-          ...detalle.map(x => x.referencia_sku),
+        "listaAgotadosCuentos",
+        catalogos.cuentos || [
+          ...porCuento.map(x => x.cuento),
+          ...detalle.map(x => x.cuento),
         ]
       );
 
       setDatalistOptions(
         "listaAgotadosReferencias",
-        [
+        catalogos.referencias || [
+          ...porReferencia.map(x => x.referencia_sku),
           ...referencias.map(x => x.referencia_sku),
           ...detalle.map(x => x.referencia_sku),
         ]
@@ -968,27 +951,27 @@
 
       setDatalistOptions(
         "listaAgotadosClientes",
-        detalle.map(x => x.dependencia)
+        catalogos.clientes || detalle.map(x => x.cliente)
       );
 
       setDatalistOptions(
         "listaAgotadosTiendas",
-        detalle.map(x => x.desc_dependencia || x.dependencia)
+        catalogos.tiendas || detalle.map(x => x.desc_dependencia || x.dependencia)
       );
 
       setDatalistOptions(
         "listaAgotadosTipoPortafolio",
-        detalle.map(x => x.tipo_portafolio)
+        catalogos.tipos_portafolio || detalle.map(x => x.tipo_portafolio)
       );
 
       setDatalistOptions(
         "listaAgotadosZonas",
-        detalle.map(x => x.zona)
+        catalogos.zonas || detalle.map(x => x.zona)
       );
 
       setDatalistOptions(
         "listaAgotadosClasificaciones",
-        detalle.map(x => x.clasificacion)
+        catalogos.clasificaciones || detalle.map(x => x.clasificacion)
       );
     }
   });

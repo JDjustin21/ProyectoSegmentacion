@@ -742,7 +742,7 @@ class SegmentacionDbService:
                     %(testeo)s = ''
                     OR (
                         %(testeo_is_exact)s = TRUE
-                        AND UPPER(regexp_replace(COALESCE(v.testeo_fnl,''), '\s+', ' ', 'g')) = %(testeo_exact)s
+                        AND UPPER(regexp_replace(COALESCE(v.testeo_fnl,''), '\\s+', ' ', 'g')) = %(testeo_exact)s
                     )
                     OR (
                         %(testeo_is_exact)s = FALSE
@@ -802,18 +802,6 @@ class SegmentacionDbService:
             },
             "tiendas": tiendas,
         }
-
-    def contar_tiendas_activas_por_linea(self, linea_raw: str) -> int:
-        linea_norm = self.normalizar_linea(linea_raw)
-        sql = f"""
-            SELECT COUNT(*) AS n
-            FROM {self._view_tiendas} v
-            WHERE v.linea_norm = %(linea_norm)s
-              AND v.estado_tienda_norm = 'activo'
-              AND v.estado_linea_norm  = 'activo';
-        """
-        row = self._repo.fetch_one(sql, {"linea_norm": linea_norm})
-        return int(row["n"]) if row and row.get("n") is not None else 0
 
     # -------------------------
     # Última segmentación por referenciaSku
@@ -1265,57 +1253,7 @@ class SegmentacionDbService:
     # -------------------------
     # Referencias nuevas / anotaciones UI
     # -------------------------
-    def marcar_y_anotar_referencias_nuevas(
-        self, referencias: List[Dict[str, Any]], dias_nuevo: int = 7
-    ) -> List[Dict[str, Any]]:
-        if not referencias:
-            return referencias
 
-        now = datetime.now(TZ_BOGOTA)
-
-        ref_list: List[str] = []
-        for r in referencias:
-            ref = (r.get("referencia") or r.get("referenciaSku") or r.get("Referencia") or "").strip()
-            if ref:
-                ref_list.append(ref)
-
-        if not ref_list:
-            return referencias
-
-        sql_upsert = """
-            INSERT INTO public.referencias_vistas (
-                referencia_sku,
-                first_seen,
-                last_seen
-            )
-            VALUES (
-                %(referencia_sku)s,
-                %(now)s,
-                %(now)s
-            )
-            ON CONFLICT (referencia_sku)
-            DO UPDATE SET
-                last_seen = EXCLUDED.last_seen;
-        """
-        rows = [{"referencia_sku": ref, "now": now} for ref in ref_list]
-        self._repo.execute_many(sql_upsert, rows)
-
-        cutoff = now - timedelta(days=int(dias_nuevo))
-        sql_nuevas = """
-            SELECT referencia_sku
-            FROM public.referencias_vistas
-            WHERE referencia_sku = ANY(%(refs)s)
-            AND viewed_at IS NULL;
-        """
-        nuevas_rows = self._repo.fetch_all(sql_nuevas, {"cutoff": cutoff})
-        nuevas_set = {(x.get("referencia_sku") or "").strip() for x in nuevas_rows}
-
-        for r in referencias:
-            ref = (r.get("referencia") or "").strip()
-            r["is_new"] = bool(ref and ref in nuevas_set)
-
-        return referencias
-    
     def sincronizar_referencias_vistas_snapshot(self, referencias: List[Dict[str, Any]]) -> int:
         """
         Sincroniza referencias_vistas con el snapshot vigente.
@@ -1489,23 +1427,6 @@ class SegmentacionDbService:
             out.setdefault(ref, {"is_segmented": False, "tiendas_activas_segmentadas": 0})
 
         return out
-
-    def marcar_como_segmentada(self, referencia_sku: str) -> None:
-        ref = (referencia_sku or "").strip()
-        if not ref:
-            return
-
-        now = datetime.now(TZ_BOGOTA)
-
-        sql = """
-            INSERT INTO public.referencias_vistas (referencia_sku, first_seen, last_seen, segmented_at)
-            VALUES (%(ref)s, %(now)s, %(now)s, %(now)s)
-            ON CONFLICT (referencia_sku)
-            DO UPDATE SET
-                last_seen = EXCLUDED.last_seen,
-                segmented_at = EXCLUDED.segmented_at;
-        """
-        self._repo.execute(sql, {"ref": ref, "now": now})
 
     def reset_segmentaciones(self) -> Dict[str, Any]:
         """

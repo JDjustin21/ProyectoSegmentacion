@@ -1,3 +1,15 @@
+// frontend/static/js/inventario.js
+//
+// Controla la pantalla de Inventario.
+// Responsabilidades:
+// - Leer la configuración inyectada por inventario.html mediante data-*.
+// - Consultar el dashboard de inventario por AJAX.
+// - Aplicar filtros y paginación.
+// - Renderizar KPIs, catálogos de filtros y cards de referencias.
+// - Refrescar manualmente las vistas materializadas usadas por el backend.
+//
+// La lógica pesada de inventario vive en backend/modules/inventario.
+// Este archivo solo administra interacción y renderizado.
 document.addEventListener("DOMContentLoaded", () => {
   "use strict";
 
@@ -37,16 +49,12 @@ document.addEventListener("DOMContentLoaded", () => {
     punto_venta: "",
     solo_con_inventario: false,
     solo_sin_inventario: false,
-    };  
+  }; 
 
   const $ = (selector) => document.querySelector(selector);
 
   function norm(value) {
     return (value || "").toString().trim();
-  }
-
-  function normLower(value) {
-    return norm(value).toLowerCase();
   }
 
   function formatoNumero(value) {
@@ -111,6 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
         catalogosInventario = json.data.catalogos;
         catalogosCargados = true;
     }
+    
 
     actualizarFiltrosOpciones(referencias, catalogosInventario);
     renderCards();
@@ -134,26 +143,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function obtenerFiltrosPayload() {
     return {
-        tipo_portafolio: filtros.tipo_portafolio,
-        linea: filtros.linea,
-        estado: filtros.estado,
-        cuento: filtros.cuento,
-        categoria: filtros.categoria,
-        referencia_sku: filtros.referencia_sku,
-        cliente: filtros.cliente,
-        punto_venta: filtros.punto_venta,
-        solo_con_inventario: filtros.solo_con_inventario ? "true" : "",
-        solo_sin_inventario: filtros.solo_sin_inventario ? "true" : "",
-        incluir_catalogos: catalogosCargados ? "" : "true",
-        };
-    }
+      tipo_portafolio: filtros.tipo_portafolio,
+      linea: filtros.linea,
+      estado: filtros.estado,
+      cuento: filtros.cuento,
+      categoria: filtros.categoria,
+      referencia_sku: filtros.referencia_sku,
+      cliente: filtros.cliente,
+      punto_venta: filtros.punto_venta,
+      solo_con_inventario: filtros.solo_con_inventario ? "true" : "",
+      solo_sin_inventario: filtros.solo_sin_inventario ? "true" : "",
+      incluir_catalogos: catalogosCargados ? "" : "true",
+    };
+  }
 
   function pintarKpis(kpis) {
     setText("#kpiInvReferenciasTotales", formatoNumero(kpis.referencias_totales));
     setText("#kpiInvReferenciasConInventario", formatoNumero(kpis.referencias_con_inventario));
     setText("#kpiInvReferenciasSinInventario", formatoNumero(kpis.referencias_sin_inventario));
     setText("#kpiInvSkuDisponibles", formatoNumero(kpis.sku_disponibles));
-    setText("#kpiInvDisponibleTotal", formatoNumero(kpis.disponible_total));
   }
 
   function pintarMeta(meta) {
@@ -205,7 +213,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const estadoInventario = norm(ref.estado_inventario);
 
     const existenciaTotal = Number(ref.existencia_total || 0);
-    const disponibleTotal = Number(ref.disponible_total || 0);
     const skuDisponibles = Number(ref.sku_disponibles || 0);
     const puntosVenta = Number(ref.puntos_venta_con_inventario || 0);
     const tieneInventario = ref.tiene_inventario === true;
@@ -274,37 +281,82 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
   }
 
+  function hayFiltrosActivos() {
+    return Boolean(
+      filtros.tipo_portafolio ||
+      filtros.linea ||
+      filtros.estado ||
+      filtros.cuento ||
+      filtros.categoria ||
+      filtros.referencia_sku ||
+      filtros.cliente ||
+      filtros.punto_venta ||
+      filtros.solo_con_inventario ||
+      filtros.solo_sin_inventario
+    );
+  }
+
   function actualizarFiltrosOpciones(dataset, catalogos = {}) {
     const rows = Array.isArray(dataset) ? dataset : [];
+    const usarCatalogosGlobales = !hayFiltrosActivos();
+
+    const tiposPortafolio = usarCatalogosGlobales
+      ? (catalogos.tipos_portafolio || rows.map(x => x.tipo_portafolio))
+      : rows.map(x => x.tipo_portafolio);
+
+    const lineas = usarCatalogosGlobales
+      ? (catalogos.lineas || rows.map(x => x.linea))
+      : rows.map(x => x.linea);
+
+    const estados = usarCatalogosGlobales
+      ? (catalogos.estados || rows.map(x => x.estado))
+      : rows.map(x => x.estado);
+
+    const cuentos = usarCatalogosGlobales
+      ? (catalogos.cuentos || rows.map(x => x.cuento))
+      : rows.map(x => x.cuento);
+
+    const categorias = usarCatalogosGlobales
+      ? (catalogos.categorias || rows.map(x => x.categoria))
+      : rows.map(x => x.categoria);
+
+    const referenciasSku = usarCatalogosGlobales
+      ? (catalogos.referencias || rows.map(x => x.referencia_sku))
+      : rows.map(x => x.referencia_sku);
 
     llenarSelect(
-        "#filtroInvTipoPortafolio",
-        catalogos.tipos_portafolio || rows.map(x => x.tipo_portafolio),
-        "Todos",
-        filtros.tipo_portafolio
+      "#filtroInvTipoPortafolio",
+      tiposPortafolio,
+      "Todos",
+      filtros.tipo_portafolio
     );
 
     llenarSelect(
-        "#filtroInvLinea",
-        catalogos.lineas || rows.map(x => x.linea),
-        "Todas",
-        filtros.linea
+      "#filtroInvLinea",
+      lineas,
+      "Todas",
+      filtros.linea
     );
 
     llenarSelect(
-        "#filtroInvEstado",
-        catalogos.estados || rows.map(x => x.estado),
-        "Todos",
-        filtros.estado
+      "#filtroInvEstado",
+      estados,
+      "Todos",
+      filtros.estado
     );
 
-    llenarDatalist("#listaInvCuentos", catalogos.cuentos || rows.map(x => x.cuento));
-    llenarDatalist("#listaInvCategorias", catalogos.categorias || rows.map(x => x.categoria));
-    llenarDatalist("#listaInvReferencias", catalogos.referencias || rows.map(x => x.referencia_sku));
+    llenarDatalist("#listaInvCuentos", cuentos);
+    llenarDatalist("#listaInvCategorias", categorias);
+    llenarDatalist("#listaInvReferencias", referenciasSku);
 
+    /*
+      Los filtros de cliente y punto de venta se mantienen desde catálogo global.
+      La vista resumen de inventario no siempre trae cliente/punto_venta en cada fila,
+      por eso no conviene derivarlos desde rows cuando se está usando la base resumen.
+    */
     llenarDatalist("#listaInvClientes", catalogos.clientes || []);
     llenarDatalist("#listaInvPuntosVenta", catalogos.puntos_venta || []);
-    }
+  }
 
   function llenarSelect(selector, values, defaultLabel, selectedValue) {
     const el = $(selector);
@@ -340,11 +392,40 @@ document.addEventListener("DOMContentLoaded", () => {
   function bindEventos() {
     $("#filtroInvTipoPortafolio")?.addEventListener("change", (e) => {
       filtros.tipo_portafolio = norm(e.target.value);
+
+      filtros.linea = "";
+      filtros.cuento = "";
+      filtros.categoria = "";
+      filtros.referencia_sku = "";
+
+      const linea = $("#filtroInvLinea");
+      const cuento = $("#filtroInvCuento");
+      const categoria = $("#filtroInvCategoria");
+      const referencia = $("#filtroInvReferencia");
+
+      if (linea) linea.value = "";
+      if (cuento) cuento.value = "";
+      if (categoria) categoria.value = "";
+      if (referencia) referencia.value = "";
+
       cargarInventario();
     });
 
     $("#filtroInvLinea")?.addEventListener("change", (e) => {
       filtros.linea = norm(e.target.value);
+
+      filtros.cuento = "";
+      filtros.categoria = "";
+      filtros.referencia_sku = "";
+
+      const cuento = $("#filtroInvCuento");
+      const categoria = $("#filtroInvCategoria");
+      const referencia = $("#filtroInvReferencia");
+
+      if (cuento) cuento.value = "";
+      if (categoria) categoria.value = "";
+      if (referencia) referencia.value = "";
+
       cargarInventario();
     });
 
@@ -448,6 +529,9 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({}),
       });
 
+      catalogosCargados = false;
+      catalogosInventario = {};
+
       await cargarInventario();
     } catch (error) {
       console.error(error);
@@ -477,7 +561,7 @@ document.addEventListener("DOMContentLoaded", () => {
       "#filtroInvCategoria",
       "#filtroInvReferencia",
       "#filtroInvCliente",
-    "#filtroInvPuntoVenta",
+      "#filtroInvPuntoVenta",
     ].forEach((selector) => {
       const el = $(selector);
       if (el) el.value = "";

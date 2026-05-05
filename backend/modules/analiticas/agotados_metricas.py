@@ -31,6 +31,7 @@ def construir_dashboard_agotados(
             "por_tienda": _agrupar_por(datos, "desc_dependencia"),
             "referencias_con_agotados": _referencias_con_agotados(datos),
             "detalle": _detalle_limitado(datos, limite=500),
+            "catalogos": _construir_catalogos(datos),
         },
         "meta": {
             "filtros_aplicados": filtros,
@@ -124,13 +125,6 @@ def _calcular_kpis(datos: List[Dict[str, Any]]) -> Dict[str, Any]:
         for fila in datos
         if fila.get("referencia_sku")
     }
-    referencias_unicas = {
-        fila.get("referencia_sku")
-        for fila in datos
-        if fila.get("referencia_sku")
-    }
-
-    total_referencias = len(referencias_unicas)
 
     referencias_con_agotado = {
         fila.get("referencia_sku")
@@ -308,3 +302,36 @@ def _detalle_limitado(
         detalle.append(fila_out)
 
     return detalle
+
+def _valores_unicos(datos: List[Dict[str, Any]], campo: str) -> List[str]:
+    """
+    Retorna valores únicos no vacíos para alimentar filtros del frontend.
+
+    Se calcula sobre el dataset completo filtrado, no sobre el detalle limitado.
+    """
+    valores = {
+        str(fila.get(campo) or "").strip()
+        for fila in datos
+        if str(fila.get(campo) or "").strip()
+    }
+
+    return sorted(valores)
+
+
+def _construir_catalogos(datos: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """
+    Construye catálogos completos para los filtros del dashboard.
+
+    Estos catálogos no deben salir de data.detalle, porque el detalle se limita
+    para no enviar demasiadas filas al frontend.
+    """
+    return {
+        "lineas": _valores_unicos(datos, "linea"),
+        "cuentos": _valores_unicos(datos, "cuento"),
+        "referencias": _valores_unicos(datos, "referencia_sku"),
+        "clientes": _valores_unicos(datos, "cliente"),
+        "tiendas": _valores_unicos(datos, "desc_dependencia"),
+        "tipos_portafolio": _valores_unicos(datos, "tipo_portafolio"),
+        "zonas": _valores_unicos(datos, "zona"),
+        "clasificaciones": _valores_unicos(datos, "clasificacion"),
+    }

@@ -4,6 +4,13 @@
 {% block content %}
 <div class="container-fluid py-4">
 
+  <div class="mb-4">
+    <h2 class="fw-bold mb-1">Configuración</h2>
+    <p class="text-muted mb-0">
+      Administración de usuarios, roles y credenciales de acceso.
+    </p>
+  </div>
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="mb-3">
@@ -16,7 +23,7 @@
 
   <div class="row g-4">
     <div class="col-lg-4">
-      <div class="card">
+      <div class="card shadow-sm border-0">
         <div class="card-header fw-bold">Crear usuario</div>
         <div class="card-body">
           <form method="POST" action="{{ url_for('admin.usuarios_crear') }}">
@@ -24,14 +31,17 @@
               <label class="form-label">Email</label>
               <input name="email" type="email" class="form-control" required>
             </div>
+
             <div class="mb-2">
               <label class="form-label">Nombre</label>
               <input name="nombre" type="text" class="form-control" required>
             </div>
+
             <div class="mb-2">
               <label class="form-label">Contraseña</label>
               <input name="password" type="password" class="form-control" required>
             </div>
+
             <div class="mb-3">
               <label class="form-label">Rol</label>
               <select name="rol" class="form-select">
@@ -39,14 +49,17 @@
                 <option value="admin">Administrador</option>
               </select>
             </div>
-            <button class="btn btn-primary w-100" type="submit">Crear</button>
+
+            <button class="btn btn-primary w-100" type="submit">
+              Crear
+            </button>
           </form>
         </div>
       </div>
     </div>
 
     <div class="col-lg-8">
-      <div class="card">
+      <div class="card shadow-sm border-0">
         <div class="card-header fw-bold">Usuarios</div>
         <div class="card-body">
           <div class="table-responsive">
@@ -62,30 +75,48 @@
               </thead>
               <tbody>
                 {% for u in usuarios %}
-                <tr>
-                  <td>{{ u.email }}</td>
-                  <td>{{ u.nombre }}</td>
-                  <td>{{ u.estado_usuario }}</td>
-                  <td>
-                    <form class="d-flex gap-2" method="POST" action="{{ url_for('admin.usuarios_cambiar_rol', id_usuario=u.id_usuario) }}">
-                      <select name="rol" class="form-select form-select-sm" style="max-width: 180px;">
-                        <option value="user" {% if u.rol == 'user' %}selected{% endif %}>Usuario</option>
-                        <option value="admin" {% if u.rol == 'admin' %}selected{% endif %}>Administrador</option>
-                      </select>
-                      <button class="btn btn-sm btn-outline-primary" type="submit">Guardar</button>
-                    </form>
-                  </td>
-                  <td class="text-end">
-                    <form class="d-inline-flex gap-2" method="POST" action="{{ url_for('admin.usuarios_reset_password', id_usuario=u.id_usuario) }}">
-                      <input name="password" type="password" class="form-control form-control-sm" placeholder="Nueva contraseña" style="max-width: 220px;">
-                      <button class="btn btn-sm btn-outline-danger" type="submit">Actualizar</button>
-                    </form>
-                  </td>
-                </tr>
+                  <tr>
+                    <td>{{ u.email }}</td>
+                    <td>{{ u.nombre }}</td>
+                    <td>{{ u.estado_usuario }}</td>
+                    <td>
+                      <form
+                        class="d-flex gap-2"
+                        method="POST"
+                        action="{{ url_for('admin.usuarios_cambiar_rol', id_usuario=u.id_usuario) }}"
+                      >
+                        <select name="rol" class="form-select form-select-sm admin-role-select">
+                          <option value="user" {% if u.rol == 'user' %}selected{% endif %}>Usuario</option>
+                          <option value="admin" {% if u.rol == 'admin' %}selected{% endif %}>Administrador</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline-primary" type="submit">
+                          Guardar
+                        </button>
+                      </form>
+                    </td>
+                    <td class="text-end">
+                      <form
+                        class="d-inline-flex gap-2"
+                        method="POST"
+                        action="{{ url_for('admin.usuarios_reset_password', id_usuario=u.id_usuario) }}"
+                      >
+                        <input
+                          name="password"
+                          type="password"
+                          class="form-control form-control-sm admin-password-input"
+                          placeholder="Nueva contraseña"
+                        >
+                        <button class="btn btn-sm btn-outline-danger" type="submit">
+                          Actualizar
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
+
           <div class="text-muted small">
             Total de usuarios: {{ usuarios|length }}
           </div>

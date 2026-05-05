@@ -1,60 +1,67 @@
 # backend/modules/analiticas/agotados_routes.py
 
 import time
-import traceback
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, render_template, request
+
 from backend.config.settings import (
+    METRICAS_EXISTENCIA_TALLA_VIEW,
     POSTGRES_DSN,
     POSTGRES_TIENDAS_VIEW,
-    METRICAS_EXISTENCIA_TALLA_VIEW,
 )
-from backend.modules.auth.decorators import login_required
 from backend.modules.analiticas.agotados_db_service import AgotadosDbService
+from backend.modules.auth.decorators import login_required
 from backend.repositories.postgres_repository import PostgresRepository
-from flask import Blueprint, current_app, jsonify, request, render_template
 
 
 agotados_bp = Blueprint(
     "agotados",
     __name__,
-    url_prefix="/analiticas"
+    url_prefix="/analiticas",
 )
 
 
 def _pg_repo() -> PostgresRepository:
+    """
+    Crea una instancia del repositorio PostgreSQL para el módulo de Analíticas.
+    """
     return PostgresRepository(POSTGRES_DSN)
 
 
 def _svc_agotados(repo: PostgresRepository) -> AgotadosDbService:
+    """
+    Construye el servicio de agotados con las vistas configuradas del proyecto.
+    """
     return AgotadosDbService(
         repo=repo,
         view_tiendas=POSTGRES_TIENDAS_VIEW,
         view_existencia_talla=METRICAS_EXISTENCIA_TALLA_VIEW,
     )
+
+
 @agotados_bp.get("/agotados")
 @login_required
 def vista_analiticas():
     """
-    Vista web del dashboard de analíticas de agotados.
+    Renderiza la pantalla del dashboard de agotados.
 
-    La lógica de negocio se mantiene en el endpoint API.
-    Esta ruta solo renderiza la pantalla.
+    La vista HTML no calcula métricas. El frontend carga la información
+    mediante llamadas AJAX a los endpoints JSON del módulo.
     """
     return render_template("analiticas.html")
+
 
 @agotados_bp.post("/api/agotados/dashboard")
 @login_required
 def api_dashboard_agotados():
     """
-    Dashboard de agotados sobre referencias segmentadas.
+    Calcula el dashboard de agotados sobre referencias segmentadas.
 
-    Objetivo de negocio:
-    - medir qué parte de lo segmentado ya no tiene disponible
-      en punto de venta, a nivel referencia SKU + tienda + talla.
+    El análisis trabaja a nivel referencia SKU + tienda + talla.
+    La base analítica ya viene normalizada desde PostgreSQL y el servicio
+    aplica los filtros enviados por el frontend.
     """
     payload = request.get_json(silent=True) or {}
-
     t0 = time.perf_counter()
 
     try:
@@ -76,24 +83,23 @@ def api_dashboard_agotados():
             "meta": result.get("meta", {}),
         })
 
-    except Exception as ex:
-        current_app.logger.error(
-            "[ANALITICAS][AGOTADOS_DASHBOARD][ERROR] %s\n%s",
-            str(ex),
-            traceback.format_exc(),
-        )
+    except Exception:
+        current_app.logger.exception("[ANALITICAS][AGOTADOS_DASHBOARD][ERROR]")
 
         return jsonify({
             "ok": False,
-            "error": "No fue posible calcular el dashboard de agotados."
+            "error": "No fue posible calcular el dashboard de agotados.",
         }), 500
-    
+
+
 @agotados_bp.post("/api/agotados/refrescar-base")
 @login_required
 def api_refrescar_base_agotados():
     """
     Refresca la materialized view usada por el dashboard de agotados.
-    Esta acción recalcula la base analítica completa.
+
+    Esta operación recalcula la base analítica completa. No debe ejecutarse
+    en cada cambio de filtro, sino cuando se requiera actualizar la base.
     """
     t0 = time.perf_counter()
 
@@ -104,7 +110,6 @@ def api_refrescar_base_agotados():
         result = svc.refrescar_base_agotados()
 
         t1 = time.perf_counter()
-
         current_app.logger.info(
             "[ANALITICAS][AGOTADOS_REFRESH_BASE] total_ms=%.2f filas=%s",
             (t1 - t0) * 1000,
@@ -116,15 +121,10 @@ def api_refrescar_base_agotados():
             "data": result,
         })
 
-    except Exception as ex:
-        current_app.logger.error(
-            "[ANALITICAS][AGOTADOS_REFRESH_BASE][ERROR] %s\n%s",
-            str(ex),
-            traceback.format_exc(),
-        )
+    except Exception:
+        current_app.logger.exception("[ANALITICAS][AGOTADOS_REFRESH_BASE][ERROR]")
 
         return jsonify({
             "ok": False,
             "error": "No fue posible refrescar la base de agotados.",
-            "detalle": str(ex),
         }), 500

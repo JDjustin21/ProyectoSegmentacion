@@ -1,4 +1,4 @@
-#backend/modules/segmentacion/referencias_snapshot_service.py
+# backend/modules/segmentacion/referencias_snapshot_service.py
 
 from __future__ import annotations
 
@@ -8,31 +8,39 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+from backend.config.settings import (
+    METRICAS_EXISTENCIA_TALLA_VIEW,
+    POSTGRES_TIENDAS_VIEW,
+)
+from backend.modules.segmentacion.segmentacion_db_service import SegmentacionDbService
 from backend.modules.segmentacion.services import SegmentacionService
 from backend.repositories.postgres_repository import PostgresRepository
 
-from backend.modules.segmentacion.segmentacion_db_service import SegmentacionDbService
-from backend.config.settings import (
-    POSTGRES_TIENDAS_VIEW,
-    METRICAS_EXISTENCIA_TALLA_VIEW,
-)
 
 class ReferenciasSnapshotService:
     """
-    Servicio responsable de refrescar el snapshot vigente de referencias.
+    Servicio encargado de refrescar el snapshot vigente de referencias.
 
-    Responsabilidades:
-    - Llamar a la API .NET de referencias
-    - Registrar el proceso en referencias_refresh_control
-    - Cargar staging
-    - Validar el lote
-    - Promover a actual
-    - Marcar el refresh como success / failed
+    Este servicio conecta la información operativa de Siesa/SQL Server con
+    PostgreSQL. La pantalla principal de Segmentación no consulta directamente
+    la API .NET; consume la tabla public.referencias_snapshot_actual.
 
-    Notas:
-    - NO expone lógica HTTP.
-    - NO depende de Flask request context.
-    - Está diseñado para ser usado por jobs programados.
+    Flujo principal:
+    1. Registra el inicio del refresh en public.referencias_refresh_control.
+    2. Consulta referencias desde la API .NET.
+    3. Normaliza la respuesta al formato esperado por PostgreSQL.
+    4. Reemplaza el contenido de public.referencias_snapshot_staging.
+    5. Valida que el lote cargado sea consistente.
+    6. Promueve el lote validado a public.referencias_snapshot_actual.
+    7. Sincroniza atributos comerciales vigentes en public.segmentacion.
+    8. Sincroniza public.referencias_vistas para manejar referencias nuevas.
+    9. Registra el resultado final del refresh.
+
+    Reglas importantes:
+    - referencias_snapshot_staging no conserva histórico.
+    - referencias_snapshot_actual representa la foto vigente de referencias.
+    - referencias_refresh_control conserva la trazabilidad de cada ejecución.
+    - Si el refresh falla, se marca como failed y se propaga la excepción.
     """
 
     STATUS_RUNNING = "running"
@@ -44,31 +52,23 @@ class ReferenciasSnapshotService:
     TRIGGER_STARTUP = "startup"
 
     def __init__(self, repo: PostgresRepository, sqlserver_api_url: str):
+        """
+        Inicializa el servicio con el repositorio PostgreSQL y la URL base
+        de la API C# / SQL Server.
+        """
         self._repo = repo
-        self._sqlserver_api_url = sqlserver_api_url
+        self._sqlserver_api_url = (sqlserver_api_url or "").strip()
 
-    # =========================
-    # API pública principal
-    # =========================
     def refresh_snapshot(
         self,
         trigger_type: str = TRIGGER_MANUAL,
         created_by: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Ejecuta el refresh completo del snapshot.
+        Ejecuta el refresh completo del snapshot de referencias.
 
-        Flujo:
-        1) crea refresh_control en running
-        2) consume API .NET
-        3) transforma registros
-        4) carga staging
-        5) valida
-        6) promueve a actual
-        7) marca success
-        Si falla:
-        - deja actual intacta
-        - marca failed
+        Este método es la entrada principal para jobs programados, ejecuciones
+        manuales o cargas iniciales. Retorna conteos útiles para monitoreo.
         """
         refresh_id = str(uuid.uuid4())
         started_at = datetime.now(timezone.utc)
@@ -89,7 +89,6 @@ class ReferenciasSnapshotService:
                 refresh_id=refresh_id,
                 loaded_at=started_at,
             )
-
             loaded_count = len(snapshot_rows)
 
             if loaded_count == 0:
@@ -97,8 +96,8 @@ class ReferenciasSnapshotService:
 
             self._cargar_staging(refresh_id=refresh_id, rows=snapshot_rows)
             self._validar_staging(refresh_id=refresh_id, expected_count=loaded_count)
-            promoted_count = self._promover_a_actual(refresh_id=refresh_id)
 
+            promoted_count = self._promover_a_actual(refresh_id=refresh_id)
             segmentacion_sync_count = self._sincronizar_estado_segmentacion_desde_snapshot()
 
             svc_pg = SegmentacionDbService(
@@ -143,17 +142,19 @@ class ReferenciasSnapshotService:
             )
             raise
 
-    # =========================
-    # Consumo de API
-    # =========================
     def _obtener_referencias_desde_api(self) -> List[Dict[str, Any]]:
+        """
+        Consulta la API .NET de referencias.
+
+        Se mantiene separado para aislar el origen externo. Si en el futuro
+        cambia la API, este método y SegmentacionService serían los primeros
+        puntos a revisar.
+        """
         servicio = SegmentacionService(self._sqlserver_api_url)
         rows = servicio.obtener_referencias()
+
         return rows if isinstance(rows, list) else []
 
-    # =========================
-    # Mapeo
-    # =========================
     def _mapear_referencias_snapshot(
         self,
         raw_rows: List[Dict[str, Any]],
@@ -161,15 +162,15 @@ class ReferenciasSnapshotService:
         loaded_at: datetime,
     ) -> List[Dict[str, Any]]:
         """
-        Convierte la salida actual de la API .NET al shape de snapshot en Postgres.
+        Convierte la salida de la API .NET al formato de snapshot en PostgreSQL.
 
-        Este método es tolerante a snake_case / camelCase / PascalCase
-        para no romper la integración si cambia el serializado.
+        El mapeo acepta nombres en snake_case, camelCase y PascalCase para hacer
+        más tolerante la integración ante cambios menores de serialización.
         """
         out: List[Dict[str, Any]] = []
 
-        for r in raw_rows:
-            referencia_sku = self._pick_str(r, "referencia", "referenciaSku", "Referencia")
+        for row in raw_rows:
+            referencia_sku = self._pick_str(row, "referencia", "referenciaSku", "Referencia")
             if not referencia_sku:
                 continue
 
@@ -177,36 +178,36 @@ class ReferenciasSnapshotService:
                 "refresh_id": refresh_id,
                 "loaded_at": loaded_at,
                 "referencia_sku": referencia_sku,
-                "referencia_base": self._pick_str(r, "referencia_base", "referenciaBase", "ReferenciaBase"),
-                "descripcion": self._pick_str(r, "descripcion", "Descripcion"),
-                "categoria": self._pick_str(r, "categoria", "Categoria"),
-                "color": self._pick_str(r, "color", "Color"),
-                "codigo_color": self._pick_str(r, "codigo_color", "codigoColor", "CodigoColor"),
-                "perfil_prenda": self._pick_str(r, "perfil_prenda", "perfilPrenda", "PerfilPrenda"),
-                "estado": self._pick_str(r, "estado", "Estado"),
-                "tipo_inventario": self._pick_str(r, "tipo_inventario", "tipoInventario", "TipoInventario"),
-                "tipo_portafolio": self._pick_str(r, "tipo_portafolio", "tipoPortafolio", "TipoPortafolio"),
-                "linea": self._pick_str(r, "linea", "Linea"),
-                "cuento": self._pick_str(r, "cuento", "Cuento"),
-                "precio_unitario": self._pick_decimal(r, "precio_unitario", "precioUnitario", "PrecioUnitario"),
-                "fecha_creacion": self._pick_datetime(r, "fecha_creacion", "fechaCreacion", "FechaCreacion"),
+                "referencia_base": self._pick_str(row, "referencia_base", "referenciaBase", "ReferenciaBase"),
+                "descripcion": self._pick_str(row, "descripcion", "Descripcion"),
+                "categoria": self._pick_str(row, "categoria", "Categoria"),
+                "color": self._pick_str(row, "color", "Color"),
+                "codigo_color": self._pick_str(row, "codigo_color", "codigoColor", "CodigoColor"),
+                "perfil_prenda": self._pick_str(row, "perfil_prenda", "perfilPrenda", "PerfilPrenda"),
+                "estado": self._pick_str(row, "estado", "Estado"),
+                "tipo_inventario": self._pick_str(row, "tipo_inventario", "tipoInventario", "TipoInventario"),
+                "tipo_portafolio": self._pick_str(row, "tipo_portafolio", "tipoPortafolio", "TipoPortafolio"),
+                "linea": self._pick_str(row, "linea", "Linea"),
+                "cuento": self._pick_str(row, "cuento", "Cuento"),
+                "precio_unitario": self._pick_decimal(row, "precio_unitario", "precioUnitario", "PrecioUnitario"),
+                "fecha_creacion": self._pick_datetime(row, "fecha_creacion", "fechaCreacion", "FechaCreacion"),
                 "fch_act_portafolio": self._pick_date(
-                    r,
+                    row,
                     "fch_act_portafolio",
                     "fchActPortafolio",
                     "FchActPortafolio",
                 ),
                 "clase_agotados": self._pick_str(
-                    r,
+                    row,
                     "clase_agotados",
                     "claseAgotados",
                     "ClaseAgotados",
                 ),
-                "cantidad_tallas": self._pick_int(r, "cantidad_tallas", "cantidadTallas", "CantidadTallas"),
-                "tallas": self._pick_str(r, "tallas", "Tallas"),
-                "tallas_conteo_json": self._pick_json(r, "tallas_conteo", "tallasConteo", "TallasConteo"),
+                "cantidad_tallas": self._pick_int(row, "cantidad_tallas", "cantidadTallas", "CantidadTallas"),
+                "tallas": self._pick_str(row, "tallas", "Tallas"),
+                "tallas_conteo_json": self._pick_json(row, "tallas_conteo", "tallasConteo", "TallasConteo"),
                 "codigos_barras_por_talla_json": self._pick_json(
-                    r,
+                    row,
                     "codigos_barras_por_talla",
                     "codigosBarrasPorTalla",
                     "CodigosBarrasPorTalla",
@@ -216,9 +217,6 @@ class ReferenciasSnapshotService:
 
         return out
 
-    # =========================
-    # Refresh control
-    # =========================
     def _insert_refresh_control_running(
         self,
         refresh_id: str,
@@ -226,6 +224,9 @@ class ReferenciasSnapshotService:
         trigger_type: str,
         created_by: Optional[str],
     ) -> None:
+        """
+        Registra una ejecución nueva del refresh en estado running.
+        """
         sql = """
             INSERT INTO public.referencias_refresh_control (
                 refresh_id,
@@ -262,6 +263,9 @@ class ReferenciasSnapshotService:
         promoted_count: int,
         duration_ms: int,
     ) -> None:
+        """
+        Marca el refresh como exitoso y guarda conteos de control.
+        """
         sql = """
             UPDATE public.referencias_refresh_control
             SET
@@ -294,6 +298,9 @@ class ReferenciasSnapshotService:
         duration_ms: int,
         error_message: str,
     ) -> None:
+        """
+        Marca el refresh como fallido y conserva el mensaje de error.
+        """
         sql = """
             UPDATE public.referencias_refresh_control
             SET
@@ -314,23 +321,16 @@ class ReferenciasSnapshotService:
             },
         )
 
-    # =========================
-    # Staging
-    # =========================
     def _cargar_staging(self, refresh_id: str, rows: List[Dict[str, Any]]) -> None:
         """
-        Inserta el lote completo en staging.
+        Reemplaza el contenido de staging con el lote actual.
 
-        Regla de negocio:
-        - referencias_snapshot_staging NO conserva histórico.
-        - En cada refresh se reemplaza completamente el contenido de staging.
-        - La historia liviana del proceso queda en referencias_refresh_control.
+        La tabla staging no se usa como histórico. Su función es recibir el lote
+        recién consultado antes de validarlo y promoverlo a la tabla final.
         """
         if not rows:
             raise RuntimeError("No se recibieron filas para cargar en referencias_snapshot_staging.")
 
-        # Limpiar completamente staging antes de cargar el lote actual.
-        # Esto evita acumulación histórica innecesaria por refresh_id.
         self._repo.execute(
             "TRUNCATE TABLE public.referencias_snapshot_staging;",
             {},
@@ -389,23 +389,28 @@ class ReferenciasSnapshotService:
         self._repo.execute_many(sql, rows)
 
     def _validar_staging(self, refresh_id: str, expected_count: int) -> None:
+        """
+        Valida que staging tenga el número esperado de filas y referencias válidas.
+        """
         row = self._repo.fetch_one(
             """
             SELECT
                 COUNT(*) AS n,
-                COUNT(*) FILTER (WHERE referencia_sku IS NULL OR TRIM(referencia_sku) = '') AS invalid_ref_count
+                COUNT(*) FILTER (
+                    WHERE referencia_sku IS NULL OR TRIM(referencia_sku) = ''
+                ) AS invalid_ref_count
             FROM public.referencias_snapshot_staging
             WHERE refresh_id = %(refresh_id)s;
             """,
             {"refresh_id": refresh_id},
         )
 
-        n = int(row["n"] or 0) if row else 0
+        staged_count = int(row["n"] or 0) if row else 0
         invalid_ref_count = int(row["invalid_ref_count"] or 0) if row else 0
 
-        if n != expected_count:
+        if staged_count != expected_count:
             raise RuntimeError(
-                f"Validación de staging falló: expected_count={expected_count}, staged_count={n}"
+                f"Validación de staging falló: expected_count={expected_count}, staged_count={staged_count}"
             )
 
         if invalid_ref_count > 0:
@@ -413,13 +418,12 @@ class ReferenciasSnapshotService:
                 f"Validación de staging falló: hay {invalid_ref_count} filas con referencia_sku inválida."
             )
 
-    # =========================
-    # Promoción a actual
-    # =========================
     def _promover_a_actual(self, refresh_id: str) -> int:
         """
-        Reemplaza completamente la tabla actual con el lote validado del refresh_id.
-        Se hace dentro de transacción para no dejar la tabla a medias.
+        Reemplaza public.referencias_snapshot_actual con el lote validado.
+
+        La operación se ejecuta en transacción para evitar que la tabla final
+        quede parcialmente cargada.
         """
         def _tx(cur):
             cur.execute(
@@ -494,8 +498,8 @@ class ReferenciasSnapshotService:
             )
 
             cur.execute("SELECT COUNT(*) AS n FROM public.referencias_snapshot_actual;")
-            row2 = cur.fetchone()
-            promoted_count = int(row2["n"] or 0) if row2 else 0
+            row_actual = cur.fetchone()
+            promoted_count = int(row_actual["n"] or 0) if row_actual else 0
 
             if promoted_count != staged_count:
                 raise RuntimeError(
@@ -505,21 +509,16 @@ class ReferenciasSnapshotService:
             return promoted_count
 
         return int(self._repo.run_in_transaction(_tx))
-    
+
     def _sincronizar_estado_segmentacion_desde_snapshot(self) -> int:
         """
-        Sincroniza en public.segmentacion los atributos comerciales que deben
-        mantenerse vigentes con la referencia actual.
+        Sincroniza atributos comerciales vigentes sobre segmentaciones existentes.
 
-        Regla de negocio:
-        - segmentacion conserva tiendas, tallas, cantidades y estado_segmentacion.
-        - tipo_portafolio y estado_sku NO se manejan como histórico.
-        - referencias_snapshot_actual es la fuente vigente para esos dos campos.
-
-        Retorna:
-        - cantidad de filas actualizadas en public.segmentacion.
+        La segmentación conserva tiendas, tallas, cantidades y estado operativo.
+        Sin embargo, campos como tipo_portafolio y estado_sku deben reflejar
+        la referencia vigente del snapshot, no una copia vieja guardada al momento
+        de segmentar.
         """
-
         def _tx(cur):
             cur.execute(
                 """
@@ -530,9 +529,9 @@ class ReferenciasSnapshotService:
                 FROM public.referencias_snapshot_actual r
                 WHERE r.referencia_sku = s.referencia
                 AND (
-                        COALESCE(s.tipo_portafolio, '') <> COALESCE(r.tipo_portafolio, '')
-                        OR COALESCE(s.estado_sku, '') <> COALESCE(r.estado, '')
-                    );
+                    COALESCE(s.tipo_portafolio, '') <> COALESCE(r.tipo_portafolio, '')
+                    OR COALESCE(s.estado_sku, '') <> COALESCE(r.estado, '')
+                );
                 """
             )
 
@@ -540,29 +539,41 @@ class ReferenciasSnapshotService:
 
         return int(self._repo.run_in_transaction(_tx))
 
-    # =========================
-    # Helpers de mapeo
-    # =========================
     @staticmethod
     def _pick_raw(data: Dict[str, Any], *keys: str) -> Any:
+        """
+        Retorna el primer valor encontrado entre varias posibles claves.
+        """
         for key in keys:
             if key in data:
                 return data.get(key)
+
         return None
 
     @classmethod
     def _pick_str(cls, data: Dict[str, Any], *keys: str) -> Optional[str]:
+        """
+        Lee un campo como texto limpio.
+        """
         value = cls._pick_raw(data, *keys)
+
         if value is None:
             return None
+
         text = str(value).strip()
+
         return text if text else None
 
     @classmethod
     def _pick_int(cls, data: Dict[str, Any], *keys: str) -> Optional[int]:
+        """
+        Lee un campo como entero. Si no se puede convertir, retorna None.
+        """
         value = cls._pick_raw(data, *keys)
+
         if value is None or value == "":
             return None
+
         try:
             return int(value)
         except Exception:
@@ -570,9 +581,14 @@ class ReferenciasSnapshotService:
 
     @classmethod
     def _pick_decimal(cls, data: Dict[str, Any], *keys: str) -> Optional[Decimal]:
+        """
+        Lee un campo como Decimal. Si no se puede convertir, retorna None.
+        """
         value = cls._pick_raw(data, *keys)
+
         if value is None or value == "":
             return None
+
         try:
             return Decimal(str(value))
         except Exception:
@@ -580,7 +596,11 @@ class ReferenciasSnapshotService:
 
     @classmethod
     def _pick_datetime(cls, data: Dict[str, Any], *keys: str) -> Optional[datetime]:
+        """
+        Lee un campo como datetime desde valores nativos o cadenas ISO.
+        """
         value = cls._pick_raw(data, *keys)
+
         if value in (None, ""):
             return None
 
@@ -591,16 +611,11 @@ class ReferenciasSnapshotService:
             return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         except Exception:
             return None
-        
+
     @classmethod
     def _pick_date(cls, data: Dict[str, Any], *keys: str):
         """
-        Lee una fecha desde la API y la devuelve como date.
-
-        La API puede serializar fechas como:
-        - date/datetime nativo
-        - string ISO
-        - string con Z
+        Lee un campo como date desde un datetime o una cadena ISO.
         """
         value = cls._pick_raw(data, *keys)
 
@@ -618,9 +633,17 @@ class ReferenciasSnapshotService:
 
     @classmethod
     def _pick_json(cls, data: Dict[str, Any], *keys: str) -> Optional[str]:
+        """
+        Serializa a JSON el primer valor encontrado entre las claves indicadas.
+
+        Se usa para campos agregados como tallas_conteo_json y
+        codigos_barras_por_talla_json antes de insertarlos como jsonb.
+        """
         value = cls._pick_raw(data, *keys)
+
         if value is None:
             return None
+
         try:
             return json.dumps(value, ensure_ascii=False)
         except Exception:

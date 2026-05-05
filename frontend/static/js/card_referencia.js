@@ -71,8 +71,11 @@
 
   /**
    * Crea el HTML de una card de referencia.
-   * - ref: objeto de referencia del dataset
-   * - config: { imagesBaseUrl, placeholderUrl }
+   *
+   * ref: objeto de referencia recibido desde /segmentacion/api/referencias.
+   * config:
+   * - imageResolverUrl: endpoint que resuelve la imagen por referencia.
+   * - placeholderUrl: imagen usada cuando no existe foto cargada.
    */
   function crearCardHTML(ref, config) {
     const referencia = norm(ref.referencia);
@@ -95,7 +98,7 @@
     const isNew = ref.is_new === true || ref.isNew === true;
 
     // Fuente de verdad para segmentación en UI: CONTEO > 0
-        const tiendasSegRaw =
+    const tiendasSegRaw =
       ref.tiendas_activas_segmentadas ??
       ref.tiendasActivasSegmentadas ??
       ref.tiendasSegmentadas ??

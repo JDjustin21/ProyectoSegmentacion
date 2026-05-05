@@ -1,7 +1,6 @@
 # backend/tools/ingestion/inventario_job.py
 
 import os
-import math
 import hashlib
 import logging
 import time
@@ -47,7 +46,10 @@ def md5(text: str) -> str:
 
 def build_hash_fila(row: dict) -> str:
     """
-    Clave estable para el snapshot actual de inventario.
+    Construye la clave única lógica de una fila de inventario.
+
+    La clave representa el grano usado para evitar duplicados:
+    referencia_sku + ean + talla + bodega + codigo_siesa.
     """
     parts = [
         norm(row.get("referencia_sku")),
@@ -111,11 +113,6 @@ def consolidar_filas_por_hash(rows: list[dict]) -> tuple[list[dict], int]:
                 actual[campo] = row.get(campo)
 
     return list(consolidadas.values()), duplicadas
-
-
-def chunk_list(arr, size):
-    for i in range(0, len(arr), size):
-        yield arr[i:i + size]
 
 
 def get_referencias_universo(repo: PostgresRepository) -> list[str]:
@@ -310,13 +307,17 @@ def llamar_api_inventario_completo(
     max_reintentos: int = 2,
 ) -> tuple[list[dict], bool]:
     """
-    Llama la API de inventario en modo completo.
+    Consulta la API C# de inventario en modo completo.
 
-    Este modo replica la lógica base del Excel:
-    - ejecutar el SP de inventario
-    - filtrar únicamente por bodegas permitidas
-    - devolver el inventario completo para alimentar inventario_actual
+    Este modo debe cargar todo el inventario válido para inventario_actual.
+    No debe aplicar filtros de rotación ni reglas de ventas recientes.
+
+    La API puede indicar truncado=true si el límite de filas no alcanza.
+    En ese caso el job se detiene para evitar reemplazar inventario_actual
+    con una muestra incompleta.
     """
+    
+    # SQLSERVER_API_URL debe ser la raíz del servicio C#, sin /api al final.
     url = f"{settings.SQLSERVER_API_URL}/api/sqlserver/inventario-existencias/consultar"
 
     body = {

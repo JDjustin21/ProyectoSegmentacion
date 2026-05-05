@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
 
 from backend.config.settings import POSTGRES_DSN, SQLSERVER_API_URL
 from backend.modules.segmentacion.referencias_snapshot_service import ReferenciasSnapshotService

@@ -27,7 +27,7 @@ import re
 import time
 import unicodedata
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import traceback
 
@@ -190,8 +190,14 @@ def vista_utilidades():
 @segmentacion_bp.post("/api/referencias/ack")
 @login_required
 def api_ack_referencia():
+    """
+    Marca una referencia como vista por el usuario.
+
+    Esta acción actualiza viewed_at en referencias_vistas y permite que el frontend
+    deje de mostrar la referencia como nueva. No modifica la segmentación ni el snapshot.
+    """
     payload = request.get_json(silent=True) or {}
-    
+
     referencia = (payload.get("referencia") or "").strip()
     if not referencia:
         return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
@@ -205,23 +211,6 @@ def api_ack_referencia():
     """, {"ref": referencia})
 
     return jsonify({"ok": True})
-
-@segmentacion_bp.post("/api/referencias/segmentar")
-@login_required
-def api_segmentar_referencia():
-    payload = request.get_json(silent=True) or {}
-    referencia_sku = (payload.get("referencia") or "").strip()
-    if not referencia_sku:
-        return jsonify({"ok": False, "error": "Falta 'referencia'"}), 400
-
-    repo = _pg_repo()
-    svc_pg = _svc_pg(repo)
-
-    # Marcamos como segmentada en la base de datos
-    svc_pg.marcar_como_segmentada(referencia_sku)
-
-    return jsonify({"ok": True, "mensaje": "Referencia segmentada"})
-
 
 
 @segmentacion_bp.get("/api/tiendas/activas")
@@ -305,13 +294,13 @@ def api_metricas():
         resumen, detalle = repo.obtener_metricas_por_referencia(
             referencia_sku=referencia_sku,
             llave_naval=llave_naval,
-            
             view_cpd_talla=settings.METRICAS_CPD_TALLA_VIEW,
             view_cpd_tienda=settings.METRICAS_CPD_TIENDA_VIEW,
             view_prom_talla=settings.METRICAS_VENTA_PROM_TALLA_VIEW,
             view_prom_tienda=settings.METRICAS_VENTA_PROM_TIENDA_VIEW,
             view_rotacion_talla=settings.METRICAS_ROTACION_TALLA_VIEW,
             view_rotacion_tienda=settings.METRICAS_ROTACION_TIENDA_VIEW,
+            llaves=llaves,
         )
         t1 = time.perf_counter()
 
@@ -736,7 +725,30 @@ def api_export_csv():
     repo = _pg_repo()
     svc = SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW, METRICAS_EXISTENCIA_TALLA_VIEW,)
 
-    rows = svc.export_dataset_todas()
+    fecha = (request.args.get("fecha") or "").strip()
+    desde_raw = (request.args.get("desde") or "").strip()
+    hasta_raw = (request.args.get("hasta") or "").strip()
+
+    if fecha:
+        dia = datetime.fromisoformat(fecha).replace(tzinfo=TZ_BOGOTA)
+        desde = dia.replace(hour=0, minute=0, second=0, microsecond=0)
+        hasta = desde + timedelta(days=1)
+        rows = svc.export_dataset_por_rango(desde, hasta)
+
+    elif desde_raw and hasta_raw:
+        desde = datetime.fromisoformat(desde_raw)
+        hasta = datetime.fromisoformat(hasta_raw)
+
+        if desde.tzinfo is None:
+            desde = desde.replace(tzinfo=TZ_BOGOTA)
+
+        if hasta.tzinfo is None:
+            hasta = hasta.replace(tzinfo=TZ_BOGOTA)
+
+        rows = svc.export_dataset_por_rango(desde, hasta)
+
+    else:
+        rows = svc.export_dataset_todas()
 
     def _norm_digits(v: str) -> str:
         return re.sub(r"\D+", "", (v or "").strip())
@@ -872,10 +884,11 @@ def api_export_csv():
             except Exception:
                 return 0
 
-        if r.get("estado_segmentacion") == "INACTIVO":
-            r["estado_segmentacion"] = "INACTIVO"
-            r["estado_detalle"] = "INACTIVO"
-            r["fecha_actualizacion"] = datetime.now(TZ_BOGOTA).isoformat()
+        estado_segmentacion = (r.get("estado_segmentacion") or "").strip().lower()
+
+        if estado_segmentacion == "inactivo":
+            r["estado_segmentacion"] = "Inactivo"
+            r["estado_detalle"] = "Inactivo"
 
         writer.writerow({
             "Id Segmentacion": r.get("id_segmentacion"),

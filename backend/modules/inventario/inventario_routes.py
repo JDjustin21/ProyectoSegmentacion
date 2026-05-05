@@ -1,5 +1,6 @@
+# backend/modules/inventario/inventario_routes.py
+
 import time
-import traceback
 
 from flask import Blueprint, current_app, jsonify, render_template, request
 
@@ -17,22 +18,47 @@ inventario_bp = Blueprint(
 
 
 def _pg_repo() -> PostgresRepository:
+    """
+    Crea una instancia del repositorio PostgreSQL.
+
+    Se define como helper local para mantener las rutas delgadas y evitar repetir
+    la creación del repositorio en cada endpoint.
+    """
     return PostgresRepository(POSTGRES_DSN)
 
 
 def _svc_inventario(repo: PostgresRepository) -> InventarioDbService:
+    """
+    Construye el servicio de inventario con sus dependencias.
+    """
     return InventarioDbService(repo=repo)
 
 
 @inventario_bp.get("")
 @login_required
 def vista_inventario():
+    """
+    Renderiza la pantalla principal del módulo de Inventario.
+
+    La información del dashboard se carga desde el frontend mediante llamadas
+    AJAX a los endpoints del módulo.
+    """
     return render_template("inventario.html")
 
 
 @inventario_bp.post("/api/dashboard")
 @login_required
 def api_dashboard_inventario():
+    """
+    Retorna los datos del dashboard de inventario.
+
+    Body JSON:
+    - filtros comerciales: línea, categoría, cuento, referencia_sku, estado, etc.
+    - filtros de tienda: cliente y punto_venta.
+    - incluir_catalogos: indica si deben enviarse catálogos para filtros.
+
+    El servicio decide internamente si consulta la vista resumen o la vista detalle.
+    """
     payload = request.get_json(silent=True) or {}
     t0 = time.perf_counter()
 
@@ -55,23 +81,24 @@ def api_dashboard_inventario():
             "meta": result.get("meta", {}),
         })
 
-    except Exception as ex:
-        current_app.logger.error(
-            "[INVENTARIO][DASHBOARD][ERROR] %s\n%s",
-            str(ex),
-            traceback.format_exc(),
-        )
+    except Exception:
+        current_app.logger.exception("[INVENTARIO][DASHBOARD][ERROR]")
 
         return jsonify({
             "ok": False,
             "error": "No fue posible cargar el dashboard de inventario.",
-            "detalle": str(ex),
         }), 500
 
 
 @inventario_bp.post("/api/refrescar-base")
 @login_required
 def api_refrescar_base_inventario():
+    """
+    Refresca las vistas materializadas usadas por el módulo de Inventario.
+
+    Este endpoint debe ejecutarse después del job de inventario o cuando se requiera
+    recalcular manualmente la base consultada por el dashboard.
+    """
     t0 = time.perf_counter()
 
     try:
@@ -91,15 +118,10 @@ def api_refrescar_base_inventario():
             "data": result,
         })
 
-    except Exception as ex:
-        current_app.logger.error(
-            "[INVENTARIO][REFRESH_BASE][ERROR] %s\n%s",
-            str(ex),
-            traceback.format_exc(),
-        )
+    except Exception:
+        current_app.logger.exception("[INVENTARIO][REFRESH_BASE][ERROR]")
 
         return jsonify({
             "ok": False,
             "error": "No fue posible refrescar la base de inventario.",
-            "detalle": str(ex),
         }), 500

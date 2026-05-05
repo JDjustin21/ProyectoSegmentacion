@@ -1,3 +1,6 @@
+/* frontend/static/css/login.css */
+
+/* Página exclusiva de inicio de sesión */
 .login-page{
   min-height: 100vh;
   position: relative;
@@ -6,7 +9,7 @@
   background: #f5f6f7;
 }
 
-/* Fondo */
+/* Fondo visual del login */
 .login-bg{
   position: absolute;
   inset: 0;
@@ -23,6 +26,7 @@
   backdrop-filter: blur(2px);
 }
 
+/* Centrado de la tarjeta */
 .login-main{
   position: relative;
   z-index: 3;
@@ -33,7 +37,7 @@
   padding: 32px 16px;
 }
 
-/* Logo esquina */
+/* Logo fijo superior */
 .login-corner-brand{
   position: fixed;
   top: 22px;
@@ -43,6 +47,7 @@
   align-items: center;
   text-decoration: none;
 }
+
 .login-corner-brand img{
   display: block;
   height: 34px;
@@ -50,7 +55,7 @@
   object-fit: contain;
 }
 
-/* Card */
+/* Tarjeta del formulario */
 .login-card{
   width: 100%;
   max-width: 460px;
@@ -65,10 +70,10 @@
 }
 
 .login-title{
-    text-align: center;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    margin: 0 0 6px 0;
+  text-align: center;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0 0 6px 0;
 }
 
 .login-sub{
@@ -77,11 +82,12 @@
   text-align: center;
 }
 
-/* Inputs */
+/* Controles del formulario */
 .login-card .form-control{
   border-radius: 12px;
   padding: 12px 14px;
 }
+
 .login-card .btn{
   border-radius: 12px;
   padding: 10px 14px;
@@ -90,22 +96,18 @@
 
 .login-input,
 .login-btn{
-  height: 48px;              /* mismo alto */
+  height: 48px;
   border-radius: 12px;
 }
 
-/* inputs ya tenían padding; con height fijo, dejamos padding estándar */
 .login-card .form-control.login-input{
   padding: 0 14px;
 }
 
-/* botón full */
 .login-btn{
-  font-weight: 700;
   padding: 0 14px;
   height: 48px;
   border-radius: 100px;
   font-weight: 700;
   width: 100%;
-  
 }
