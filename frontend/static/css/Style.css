@@ -2110,3 +2110,346 @@ body {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* =========================================================
+   MÓDULO MAPA
+   ========================================================= */
+
+.mapa-page {
+  padding: 0.85rem 1rem !important;
+  font-family: "Inter", sans-serif;
+  max-width: 100%;
+}
+
+.mapa-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.mapa-title {
+  margin: 0;
+  font-size: clamp(1.35rem, 1.7vw, 1.85rem);
+  line-height: 1.15;
+  font-weight: 800;
+  color: #1f2937;
+}
+
+.mapa-subtitle {
+  margin: 0.25rem 0 0;
+  color: #6b7280;
+  font-size: clamp(0.78rem, 0.95vw, 0.9rem);
+}
+
+.mapa-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mapa-toolbar .btn {
+  padding: 0.42rem 0.75rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+  font-weight: 800;
+}
+
+.mapa-filtros-grid {
+  display: grid;
+  grid-template-columns: 0.65fr 1fr 1fr 1fr 1fr 1fr auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.mapa-filtros-grid .form-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-bottom: 0.25rem;
+}
+
+.mapa-filtros-grid .form-select,
+.mapa-filtros-grid .form-control {
+  min-height: 32px;
+  padding: 0.34rem 0.55rem;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+
+.mapa-filtro-acciones {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+}
+
+.mapa-kpis {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.mapa-kpi-card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 0.68rem 0.85rem;
+  box-shadow: 0 6px 18px rgba(11,31,58,.08);
+  border: 1px solid var(--border);
+  min-height: 78px;
+}
+
+.mapa-kpi-label {
+  display: block;
+  font-size: 0.61rem;
+  line-height: 1.15;
+  letter-spacing: 0.04em;
+  color: #5f6b7a;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-bottom: 0.28rem;
+}
+
+.mapa-kpi-card strong {
+  display: block;
+  color: var(--text);
+  font-size: clamp(1.08rem, 1.45vw, 1.32rem);
+  line-height: 1.08;
+  font-weight: 900;
+}
+
+
+.mapa-layout-grid {
+  display: grid;
+  grid-template-columns: minmax(500px, 1.02fr) minmax(560px, 0.98fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.mapa-card {
+  position: relative;
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 0.75rem;
+  margin-bottom: 0;
+  box-shadow: 0 6px 18px rgba(11,31,58,.08);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+
+.mapa-contenedor,
+.mapa-colombia {
+  width: 100%;
+  height: calc(100vh - 390px);
+  min-height: 390px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #eef2f7;
+}
+
+.mapa-estado {
+  position: absolute;
+  z-index: 500;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 0.7rem 0.9rem;
+  color: #374151;
+  font-size: 0.78rem;
+  font-weight: 800;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+}
+
+.mapa-tabla-card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 0;
+  box-shadow: 0 6px 18px rgba(11,31,58,.08);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+}
+
+.mapa-tabla-header {
+  background: #ffffff;
+  border-bottom: 1px solid rgba(11,31,58,.12);
+  padding: 0.75rem 0.9rem;
+  text-align: left;
+}
+
+.mapa-tabla-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--text);
+}
+
+.mapa-tabla-subtitulo {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.mapa-tabla-scroll {
+  min-height: 0;
+  max-height: 330px;
+  overflow: auto;
+  border: none;
+}
+
+/*
+  Mantiene suficiente ancho para ver las columnas,
+  pero reduce el scroll frente a la versión anterior.
+*/
+.mapa-tabla {
+  width: 100%;
+  min-width: 720px;
+  margin: 0;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.mapa-tabla th,
+.mapa-tabla td {
+  padding: 0.28rem 0.36rem !important;
+  line-height: 1.12;
+  vertical-align: middle;
+}
+
+.mapa-tabla thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f7f9fc;
+  color: var(--text);
+  font-size: 0.62rem;
+  font-weight: 900;
+  border-bottom: 1px solid rgba(11,31,58,.18);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.mapa-tabla thead th:hover {
+  background: #eef3f8;
+}
+
+.mapa-tabla tbody td {
+  border-bottom: 1px solid rgba(11,31,58,.08);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.mapa-tabla th:first-child,
+.mapa-tabla td:first-child {
+  min-width: 140px;
+}
+
+.mapa-tabla th.text-end,
+.mapa-tabla td.text-end {
+  min-width: 68px;
+}
+
+.mapa-fila-click {
+  cursor: pointer;
+}
+
+.mapa-fila-click:hover td {
+  background: #f7f9fc;
+}
+
+.mapa-fila-total td {
+  font-weight: 900;
+  background: #f1f5f9;
+}
+
+.mapa-fila-activa td {
+  background: #e8f1ff !important;
+  font-weight: 800;
+}
+
+.mapa-var-negativa {
+  color: #c0392b;
+  font-weight: 900;
+}
+
+.mapa-var-positiva {
+  color: #1f8f4d;
+  font-weight: 900;
+}
+
+.mapa-var-neutra {
+  color: #6b7280;
+  font-weight: 900;
+}
+
+.mapa-th-label {
+  display: inline-block;
+}
+
+.mapa-th-sort {
+  display: inline-block;
+  margin-left: 0.2rem;
+  color: #334155;
+}
+
+@media (max-width: 1400px) {
+  .mapa-layout-grid {
+    grid-template-columns: minmax(480px, 1fr) minmax(500px, 1fr);
+  }
+
+  .mapa-contenedor,
+  .mapa-colombia {
+    height: calc(100vh - 370px);
+    min-height: 400px;
+  }
+
+  .mapa-tabla {
+    min-width: 700px;
+    font-size: 0.66rem;
+  }
+}
+
+@media (max-width: 1200px) {
+  .mapa-layout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mapa-contenedor,
+  .mapa-colombia {
+    height: 460px;
+    min-height: 460px;
+  }
+
+  .mapa-tabla-scroll {
+    max-height: 360px;
+  }
+
+  .mapa-filtros-grid {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .mapa-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .mapa-filtros-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mapa-contenedor,
+  .mapa-colombia {
+    height: 420px;
+    min-height: 420px;
+  }
+}

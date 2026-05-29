@@ -54,6 +54,38 @@ class SegmentacionDbService:
 
         return loaded_at
 
+    def sincronizar_segmentacion_desde_snapshot(self) -> Dict[str, Any]:
+        """
+        Sincroniza metadatos de segmentación desde referencias_snapshot_actual.
+
+        Actualiza:
+        - segmentacion: datos maestros de referencia como precio, descripción,
+        tipo_portafolio, estado_sku, línea, cuento, etc.
+        - segmentacion_detalle: codigo_barras por talla desde
+        codigos_barras_por_talla_json.
+
+        No modifica:
+        - cantidades segmentadas
+        - estado_segmentacion
+        - estado_detalle
+        - tiendas segmentadas
+        """
+        row = self._repo.fetch_one("""
+            SELECT *
+            FROM public.sync_segmentacion_desde_referencias_snapshot();
+        """)
+
+        if not row:
+            return {
+                "segmentaciones_actualizadas": 0,
+                "detalles_codigo_barras_actualizados": 0,
+            }
+
+        return {
+            "segmentaciones_actualizadas": int(row.get("segmentaciones_actualizadas") or 0),
+            "detalles_codigo_barras_actualizados": int(row.get("detalles_codigo_barras_actualizados") or 0),
+        }   
+
     def listar_referencias_resumen_cards(
         self
     ) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
@@ -305,9 +337,17 @@ class SegmentacionDbService:
                         s.id_segmentacion,
                         s.referencia,
                         s.linea,
-                        s.fecha_creacion
+                        s.fecha_creacion,
+                        COALESCE(r.tipo_portafolio, s.tipo_portafolio) AS tipo_portafolio,
+                        COALESCE(r.estado, s.estado_sku) AS estado_sku,
+                        s.estado_segmentacion
                     FROM segmentacion s
+                    JOIN public.referencias_snapshot_actual r
+                        ON r.referencia_sku = s.referencia
                     WHERE COALESCE(s.linea, '') = %(linea)s
+                    AND UPPER(TRIM(COALESCE(s.estado_segmentacion, ''))) = 'ACTIVA'
+                    AND UPPER(TRIM(COALESCE(r.tipo_portafolio, s.tipo_portafolio, ''))) = 'LINEA'
+                    AND UPPER(TRIM(COALESCE(r.estado, s.estado_sku, ''))) = 'ACTIVO'
                     ORDER BY s.referencia, s.fecha_creacion DESC
                 ),
                 det AS (
@@ -381,14 +421,22 @@ class SegmentacionDbService:
             }
 
         sql_plantilla = """
-            WITH ultimas AS (
+           WITH ultimas AS (
                 SELECT DISTINCT ON (s.referencia)
                     s.id_segmentacion,
                     s.referencia,
                     s.linea,
-                    s.fecha_creacion
+                    s.fecha_creacion,
+                    COALESCE(r.tipo_portafolio, s.tipo_portafolio) AS tipo_portafolio,
+                    COALESCE(r.estado, s.estado_sku) AS estado_sku,
+                    s.estado_segmentacion
                 FROM segmentacion s
+                JOIN public.referencias_snapshot_actual r
+                    ON r.referencia_sku = s.referencia
                 WHERE COALESCE(s.linea, '') = %(linea)s
+                AND UPPER(TRIM(COALESCE(s.estado_segmentacion, ''))) = 'ACTIVA'
+                AND UPPER(TRIM(COALESCE(r.tipo_portafolio, s.tipo_portafolio, ''))) = 'LINEA'
+                AND UPPER(TRIM(COALESCE(r.estado, s.estado_sku, ''))) = 'ACTIVO'
                 ORDER BY s.referencia, s.fecha_creacion DESC
             )
             SELECT
@@ -420,9 +468,17 @@ class SegmentacionDbService:
                 SELECT DISTINCT ON (s.referencia)
                     s.id_segmentacion,
                     s.referencia,
-                    s.linea
+                    s.linea,
+                    COALESCE(r.tipo_portafolio, s.tipo_portafolio) AS tipo_portafolio,
+                    COALESCE(r.estado, s.estado_sku) AS estado_sku,
+                    s.estado_segmentacion
                 FROM segmentacion s
+                JOIN public.referencias_snapshot_actual r
+                    ON r.referencia_sku = s.referencia
                 WHERE COALESCE(s.linea, '') = %(linea)s
+                AND UPPER(TRIM(COALESCE(s.estado_segmentacion, ''))) = 'ACTIVA'
+                AND UPPER(TRIM(COALESCE(r.tipo_portafolio, s.tipo_portafolio, ''))) = 'LINEA'
+                AND UPPER(TRIM(COALESCE(r.estado, s.estado_sku, ''))) = 'ACTIVO'
                 ORDER BY s.referencia, s.fecha_creacion DESC
             )
             SELECT COUNT(*) AS total
@@ -487,9 +543,17 @@ class SegmentacionDbService:
                 WITH ultimas AS (
                     SELECT DISTINCT ON (s.referencia)
                         s.id_segmentacion,
-                        s.referencia
+                        s.referencia,
+                        COALESCE(r.tipo_portafolio, s.tipo_portafolio) AS tipo_portafolio,
+                        COALESCE(r.estado, s.estado_sku) AS estado_sku,
+                        s.estado_segmentacion
                     FROM segmentacion s
+                    JOIN public.referencias_snapshot_actual r
+                        ON r.referencia_sku = s.referencia
                     WHERE COALESCE(s.linea, '') = %(linea)s
+                    AND UPPER(TRIM(COALESCE(s.estado_segmentacion, ''))) = 'ACTIVA'
+                    AND UPPER(TRIM(COALESCE(r.tipo_portafolio, s.tipo_portafolio, ''))) = 'LINEA'
+                    AND UPPER(TRIM(COALESCE(r.estado, s.estado_sku, ''))) = 'ACTIVO'
                     ORDER BY s.referencia, s.fecha_creacion DESC
                 )
                 SELECT

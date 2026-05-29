@@ -71,6 +71,14 @@
             <span class="nav-text">Analíticas</span>
           </a>
         </li>
+
+        <li class="nav-item">
+          <a class="nav-link {% if request.path.startswith(url_for('mapa.vista_mapa')) %}active{% endif %}"
+            href="{{ url_for('mapa.vista_mapa') }}">
+            <span class="nav-text">Mapa</span>
+          </a>
+        </li>
+
         <li class="nav-item">
           <a class="nav-link {% if request.path.startswith(url_for('segmentacion.vista_utilidades')) %}active{% endif %}"
             href="{{ url_for('segmentacion.vista_utilidades') }}">

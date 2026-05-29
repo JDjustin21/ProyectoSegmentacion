@@ -8,6 +8,7 @@ from backend.modules.analiticas.agotados_routes import agotados_bp
 from backend.modules.auth.auth_routes import auth_bp
 from backend.modules.inventario.inventario_routes import inventario_bp
 from backend.modules.segmentacion.routes import segmentacion_bp
+from backend.modules.mapa.mapa_routes import mapa_bp
 
 
 def create_app():
@@ -36,6 +37,7 @@ def create_app():
     app.register_blueprint(segmentacion_bp)
     app.register_blueprint(agotados_bp)
     app.register_blueprint(inventario_bp)
+    app.register_blueprint(mapa_bp)
 
     return app
 

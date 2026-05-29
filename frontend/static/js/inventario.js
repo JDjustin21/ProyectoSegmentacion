@@ -105,7 +105,6 @@ document.addEventListener("DOMContentLoaded", () => {
       body: JSON.stringify(payload),
     });
 
-    // Si esta respuesta pertenece a una búsqueda vieja, se ignora.
     if (requestId !== requestSeq) {
       return;
     }

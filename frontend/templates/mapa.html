@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Mapa{% endblock %}
+
+{% block content %}
+<section
+  class="mapa-page"
+  data-api-filtros-url="{{ url_for('mapa.api_filtros_mapa') }}"
+  data-api-datos-url="{{ url_for('mapa.api_datos_mapa') }}"
+>
+  <div class="mapa-header">
+    <div>
+      <h1 class="mapa-title">Mapa</h1>
+      <p class="mapa-subtitle">
+        Visualización geográfica por ciudad de ventas, inventario y segmentación.
+      </p>
+    </div>
+  </div>
+
+  <div class="mapa-toolbar">
+    <button class="btn btn-primary mapa-tipo-btn active" data-tipo="ventas">
+      Ventas
+    </button>
+
+    <button class="btn btn-outline-primary mapa-tipo-btn" data-tipo="inventario">
+      Inventario
+    </button>
+
+    <button class="btn btn-outline-primary mapa-tipo-btn" data-tipo="segmentacion">
+      Segmentación
+    </button>
+  </div>
+
+  <div class="card filters-card mb-3">
+    <div class="card-body">
+      <div class="mapa-filtros-grid">
+        <div>
+          <label class="form-label" for="filtroMes">Mes</label>
+          <select id="filtroMes" class="form-select form-select-sm">
+            <option value="1">Enero</option>
+            <option value="2">Febrero</option>
+            <option value="3">Marzo</option>
+            <option value="4">Abril</option>
+            <option value="5">Mayo</option>
+            <option value="6">Junio</option>
+            <option value="7">Julio</option>
+            <option value="8">Agosto</option>
+            <option value="9">Septiembre</option>
+            <option value="10">Octubre</option>
+            <option value="11">Noviembre</option>
+            <option value="12">Diciembre</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="form-label" for="filtroLinea">Línea</label>
+          <select id="filtroLinea" class="form-select form-select-sm">
+            <option value="">Todas</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="form-label" for="filtroCliente">Cliente</label>
+          <select id="filtroCliente" class="form-select form-select-sm">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="form-label" for="filtroCiudad">Ciudad</label>
+          <select id="filtroCiudad" class="form-select form-select-sm">
+            <option value="">Todas</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="form-label" for="filtroTipoPortafolio">Tipo portafolio</label>
+          <select id="filtroTipoPortafolio" class="form-select form-select-sm">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="form-label" for="filtroEstado">Estado</label>
+          <select id="filtroEstado" class="form-select form-select-sm">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div class="filters-actions mapa-filtro-acciones">
+          <button id="btnLimpiarFiltros" class="btn btn-limpiar btn-sm" type="button">
+            Limpiar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mapa-kpis">
+    <div class="mapa-kpi-card">
+      <span class="mapa-kpi-label">Vista actual</span>
+      <strong id="mapaTitulo">Mapa de calor por ventas</strong>
+    </div>
+
+    <div class="mapa-kpi-card">
+      <span class="mapa-kpi-label">Ciudades encontradas</span>
+      <strong id="mapaTotalPuntos">0</strong>
+    </div>
+
+    <div class="mapa-kpi-card">
+      <span class="mapa-kpi-label">Total</span>
+      <strong id="mapaTotalValor">0</strong>
+    </div>
+  </div>
+
+  <div class="mapa-layout-grid">
+    <div class="mapa-card mb-3">
+      <div id="mapaEstado" class="mapa-estado">
+        Cargando información del mapa...
+      </div>
+
+      <div id="mapaContenedor" class="mapa-contenedor mapa-colombia"></div>
+    </div>
+
+    <div id="mapaTablaCard" class="mapa-tabla-card">
+      <div class="mapa-tabla-header">
+        <div>
+          <h2 id="mapaTablaTitulo">Detalle</h2>
+          <p id="mapaTablaSubtitulo" class="mapa-tabla-subtitulo">
+            Selecciona una ciudad en el mapa o una línea en la tabla para filtrar.
+          </p>
+        </div>
+      </div>
+
+      <div class="mapa-tabla-scroll">
+        <table class="table table-sm align-middle mapa-tabla">
+          <thead id="mapaTablaHead"></thead>
+          <tbody id="mapaTablaBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<script src="{{ url_for('static', filename='js/mapa.js') }}"></script>
+{% endblock %}

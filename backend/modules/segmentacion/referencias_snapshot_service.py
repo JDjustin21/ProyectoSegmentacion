@@ -98,13 +98,15 @@ class ReferenciasSnapshotService:
             self._validar_staging(refresh_id=refresh_id, expected_count=loaded_count)
 
             promoted_count = self._promover_a_actual(refresh_id=refresh_id)
-            segmentacion_sync_count = self._sincronizar_estado_segmentacion_desde_snapshot()
 
             svc_pg = SegmentacionDbService(
                 self._repo,
                 POSTGRES_TIENDAS_VIEW,
                 METRICAS_EXISTENCIA_TALLA_VIEW,
             )
+
+            segmentacion_sync_count = svc_pg.sincronizar_segmentacion_desde_snapshot()
+
             synced_count = svc_pg.sincronizar_referencias_vistas_snapshot(snapshot_rows)
 
             finished_at = datetime.now(timezone.utc)
