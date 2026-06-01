@@ -82,7 +82,7 @@ class AgotadosDbService:
                 llave_naval,
                 talla,
                 codigo_barras,
-                cantidad_segmentada,
+                cantidad_segmentada::integer AS cantidad_segmentada,
                 fecha_actualizacion,
 
                 cod_bodega,
@@ -95,8 +95,8 @@ class AgotadosDbService:
                 clasificacion,
                 testeo,
 
-                disponible_talla,
-                disponible_calculado,
+                disponible_talla::double precision AS disponible_talla,
+                disponible_calculado::double precision AS disponible_calculado,
                 es_agotado,
                 estado_agotado,
                 disponible_original_nulo
@@ -110,7 +110,7 @@ class AgotadosDbService:
                 talla;
         """
 
-        return self._repo.fetch_all(sql, params)
+        return self._repo.fetch_all_fast(sql, params)
 
     def _normalizar_filtros(self, filtros: Dict[str, Any]) -> Dict[str, str]:
         """

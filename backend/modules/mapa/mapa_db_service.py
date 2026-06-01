@@ -143,102 +143,32 @@ class MapaDbService:
         """
         Retorna valores disponibles para filtros del mapa.
 
-        Cliente corresponde a dependencia, según la regla confirmada.
+        Los catálogos se consultan desde una materialized view para evitar
+        recalcular ventas, inventario y segmentación cada vez que se abre el mapa.
         """
-        sql = f"""
-            WITH base_ventas AS (
-                SELECT
-                    public.fn_linea_mapa(p.linea) AS linea,
-                    p.dependencia,
-                    p.tipo_portafolio,
-                    p.estado_sku,
-                    p.ciudad
-                FROM public.{self._view_ventas_mapa} p
-                WHERE p.ciudad IS NOT NULL
-                AND public.fn_linea_mapa(p.linea) IS NOT NULL
-            ),
-            base_inventario AS (
-                SELECT
-                    public.fn_linea_mapa(r.linea) AS linea,
-                    t.dependencia,
-                    r.tipo_portafolio,
-                    r.estado AS estado_sku,
-                    t.ciudad
-                FROM public.{self._view_inventario_tienda} i
-                JOIN public.{self._view_tiendas} t
-                    ON t.llave_naval = i.llave_naval
-                LEFT JOIN public.{self._view_inventario_referencia} r
-                    ON r.referencia_sku = i.referencia_sku
-                WHERE t.ciudad IS NOT NULL
-                AND public.fn_linea_mapa(r.linea) IS NOT NULL
-            ),
-            base_segmentacion AS (
-                SELECT
-                    public.fn_linea_mapa(s.linea) AS linea,
-                    NULLIF(TRIM(t.dependencia), '') AS dependencia,
-                    s.tipo_portafolio,
-                    s.estado_sku,
-                    t.ciudad
-                FROM public.segmentacion s
-                JOIN public.segmentacion_detalle d
-                    ON d.id_segmentacion = s.id_segmentacion
-                JOIN public.{self._view_tiendas} t
-                    ON t.llave_naval = d.llave_naval
-                WHERE t.ciudad IS NOT NULL
-                AND public.fn_linea_mapa(s.linea) IS NOT NULL
-            ),
-            union_filtros AS (
-                SELECT * FROM base_ventas
-                UNION
-                SELECT * FROM base_inventario
-                UNION
-                SELECT * FROM base_segmentacion
-            )
+        sql = """
             SELECT
-                ARRAY(
-                    SELECT DISTINCT linea
-                    FROM union_filtros
-                    WHERE linea IS NOT NULL AND TRIM(linea) <> ''
-                    ORDER BY linea
-                ) AS lineas,
-
-                ARRAY(
-                    SELECT DISTINCT dependencia
-                    FROM union_filtros
-                    WHERE dependencia IS NOT NULL AND TRIM(dependencia) <> ''
-                    ORDER BY dependencia
-                ) AS clientes,
-
-                ARRAY(
-                    SELECT DISTINCT ciudad
-                    FROM union_filtros
-                    WHERE ciudad IS NOT NULL AND TRIM(ciudad) <> ''
-                    ORDER BY ciudad
-                ) AS ciudades,
-
-                ARRAY(
-                    SELECT DISTINCT tipo_portafolio
-                    FROM union_filtros
-                    WHERE tipo_portafolio IS NOT NULL AND TRIM(tipo_portafolio) <> ''
-                    ORDER BY tipo_portafolio
-                ) AS tipos_portafolio,
-
-                ARRAY(
-                    SELECT DISTINCT estado_sku
-                    FROM union_filtros
-                    WHERE estado_sku IS NOT NULL AND TRIM(estado_sku) <> ''
-                    ORDER BY estado_sku
-                ) AS estados;
+                COALESCE(lineas, ARRAY[]::text[]) AS lineas,
+                COALESCE(clientes, ARRAY[]::text[]) AS clientes,
+                COALESCE(ciudades, ARRAY[]::text[]) AS ciudades,
+                COALESCE(tipos_portafolio, ARRAY[]::text[]) AS tipos_portafolio,
+                COALESCE(estados, ARRAY[]::text[]) AS estados
+            FROM public.mv_mapa_filtros
+            LIMIT 1;
         """
 
-        row = self._repo.fetch_all(sql, {})
-        return row[0] if row else {
-            "lineas": [],
-            "clientes": [],
-            "ciudades": [],
-            "tipos_portafolio": [],
-            "estados": [],
-        }
+        rows = self._repo.fetch_all(sql, {})
+
+        if not rows:
+            return {
+                "lineas": [],
+                "clientes": [],
+                "ciudades": [],
+                "tipos_portafolio": [],
+                "estados": [],
+            }
+
+        return rows[0]
 
     # =========================================================
     # VENTAS

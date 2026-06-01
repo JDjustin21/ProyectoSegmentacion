@@ -16,19 +16,18 @@ def construir_dashboard_agotados(
 
     La intención es separar el cálculo analítico del acceso a datos.
     Esto facilita probar la lógica sin depender directamente de Postgres.
+
+    Optimización aplicada:
+    - Las agrupaciones principales se calculan en una sola pasada sobre datos.
+    - Se conservan las mismas llaves de respuesta esperadas por el frontend.
     """
     datos = datos or []
+    agrupaciones = _agrupar_varios(datos)
 
     return {
         "data": {
             "kpis": _calcular_kpis(datos),
-            "por_linea": _agrupar_por(datos, "linea"),
-            "por_cuento": _agrupar_por(datos, "cuento"),
-            "por_referencia_sku": _agrupar_por(datos, "referencia_sku"),
-            "por_talla": _agrupar_por(datos, "talla"),
-            "por_zona": _agrupar_por(datos, "zona"),
-            "por_clasificacion": _agrupar_por(datos, "clasificacion"),
-            "por_tienda": _agrupar_por(datos, "desc_dependencia"),
+            **agrupaciones,
             "referencias_con_agotados": _referencias_con_agotados(datos),
             "detalle": _detalle_limitado(datos, limite=500),
             "catalogos": _construir_catalogos(datos),
@@ -165,9 +164,85 @@ def _calcular_kpis(datos: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _agrupar_varios(datos: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Calcula las agrupaciones principales del dashboard en una sola pasada.
+
+    Antes, el dashboard llamaba varias veces a _agrupar_por, lo que implicaba
+    recorrer todo el dataset una vez por cada agrupación. Esta función conserva
+    el mismo formato de salida, pero reduce recorridos repetidos.
+    """
+    campos = {
+        "por_linea": ("linea", "linea"),
+        "por_cuento": ("cuento", "cuento"),
+        "por_referencia_sku": ("referencia_sku", "referencia_sku"),
+        "por_talla": ("talla", "talla"),
+        "por_zona": ("zona", "zona"),
+        "por_clasificacion": ("clasificacion", "clasificacion"),
+        "por_tienda": ("desc_dependencia", "desc_dependencia"),
+    }
+
+    grupos_por_salida = {
+        nombre_salida: defaultdict(lambda: {
+            "total_segmentado": 0,
+            "total_con_dato_inventario": 0,
+            "total_con_disponible_nulo": 0,
+            "total_agotado": 0,
+        })
+        for nombre_salida in campos
+    }
+
+    for fila in datos:
+        es_agotado = _es_agotado(fila)
+        tiene_inventario = _tiene_dato_inventario(fila)
+
+        for nombre_salida, (campo_origen, _) in campos.items():
+            clave = fila.get(campo_origen) or "Sin clasificar"
+            grupo = grupos_por_salida[nombre_salida][clave]
+
+            grupo["total_segmentado"] += 1
+
+            if tiene_inventario:
+                grupo["total_con_dato_inventario"] += 1
+            else:
+                grupo["total_con_disponible_nulo"] += 1
+
+            if es_agotado:
+                grupo["total_agotado"] += 1
+
+    resultado: Dict[str, List[Dict[str, Any]]] = {}
+
+    for nombre_salida, (_, campo_respuesta) in campos.items():
+        salida = []
+
+        for clave, valores in grupos_por_salida[nombre_salida].items():
+            total_segmentado = valores["total_segmentado"]
+            total_agotado = valores["total_agotado"]
+
+            salida.append({
+                campo_respuesta: clave,
+                "total_segmentado": total_segmentado,
+                "total_con_dato_inventario": valores["total_con_dato_inventario"],
+                "total_con_disponible_nulo": valores["total_con_disponible_nulo"],
+                "total_agotado": total_agotado,
+                "porcentaje_agotado": _porcentaje(total_agotado, total_segmentado),
+            })
+
+        resultado[nombre_salida] = sorted(
+            salida,
+            key=lambda x: (x["total_agotado"], x["porcentaje_agotado"]),
+            reverse=True,
+        )
+
+    return resultado
+
+
 def _agrupar_por(datos: List[Dict[str, Any]], campo: str) -> List[Dict[str, Any]]:
     """
     Agrupa las filas segmentadas por un campo específico.
+
+    Se conserva como función de apoyo/compatibilidad, aunque el dashboard
+    principal usa _agrupar_varios para evitar recorridos repetidos.
 
     Regla de negocio:
     - disponible_talla NULL se interpreta como disponible 0.
@@ -215,6 +290,7 @@ def _agrupar_por(datos: List[Dict[str, Any]], campo: str) -> List[Dict[str, Any]
         key=lambda x: (x["total_agotado"], x["porcentaje_agotado"]),
         reverse=True,
     )
+
 
 def _referencias_con_agotados(
     datos: List[Dict[str, Any]],
@@ -302,6 +378,7 @@ def _detalle_limitado(
         detalle.append(fila_out)
 
     return detalle
+
 
 def _valores_unicos(datos: List[Dict[str, Any]], campo: str) -> List[str]:
     """

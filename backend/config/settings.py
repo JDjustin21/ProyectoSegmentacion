@@ -83,7 +83,7 @@ METRICAS_PART_VENTA_LINEA_VIEW = os.getenv(
 
 METRICAS_EXISTENCIA_TALLA_VIEW = os.getenv(
     "METRICAS_EXISTENCIA_TALLA_VIEW",
-    "vw_metricas_existencia_por_talla"
+    "mv_metricas_existencia_por_talla"
 ).strip()
 
 

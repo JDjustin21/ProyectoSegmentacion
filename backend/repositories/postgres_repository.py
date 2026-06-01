@@ -124,6 +124,31 @@ class PostgresRepository:
             self._json_safe_row(dict(row))
             for row in rows
         ]
+    
+    def fetch_all_fast(
+        self,
+        sql: str,
+        params: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Ejecuta una consulta grande de solo lectura usando cursor normal.
+
+        Este método evita RealDictCursor y evita la conversión JSON-safe
+        campo por campo. Está pensado para consultas analíticas donde el SQL
+        ya devuelve tipos simples compatibles con el procesamiento del dashboard.
+
+        No reemplaza fetch_all; úsese solo en consultas grandes y controladas.
+        """
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params or {})
+                columnas = [desc[0] for desc in cur.description]
+                rows = cur.fetchall()
+
+        return [
+            dict(zip(columnas, row))
+            for row in rows
+        ]
 
     def fetch_one(
         self,
