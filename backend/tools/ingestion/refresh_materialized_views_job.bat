@@ -46,7 +46,7 @@ cd /d "%PROJECT_ROOT%"
 REM ============================================
 REM 6) VARIABLES DEL JOB
 REM ============================================
-set "POSTGRES_DSN=dbname=ProyectoSegmentacion user=postgres password=postgres host=10.10.20.247 port=5432"
+set "POSTGRES_DSN=dbname=Creytex_Segmentacion_V1 user=postgres password=postgres host=localhost port=5432"
 
 REM ============================================
 REM 7) VALIDACIONES PREVIAS

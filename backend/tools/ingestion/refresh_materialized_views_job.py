@@ -3,6 +3,16 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from pathlib import Path
+
+
+# Permite ejecutar este job desde .bat, Programador de tareas o consola
+# sin depender del directorio actual de ejecución.
+ROOT_DIR = Path(__file__).resolve().parents[3]
+
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 
 from backend.config.settings import POSTGRES_DSN
 from backend.repositories.postgres_repository import PostgresRepository
@@ -58,6 +68,34 @@ def main() -> int:
     try:
         ejecutar_sql(
             repo,
+            "REFRESH MATERIALIZED VIEW public.mv_inventario_base_detalle;",
+            "REFRESH mv_inventario_base_detalle",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "ANALYZE public.mv_inventario_base_detalle;",
+            "ANALYZE mv_inventario_base_detalle",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "REFRESH MATERIALIZED VIEW public.mv_inventario_resumen_referencia;",
+            "REFRESH mv_inventario_resumen_referencia",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "ANALYZE public.mv_inventario_resumen_referencia;",
+            "ANALYZE mv_inventario_resumen_referencia",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
             "REFRESH MATERIALIZED VIEW public.mv_metricas_existencia_por_talla;",
             "REFRESH mv_metricas_existencia_por_talla",
             logger,
@@ -81,6 +119,48 @@ def main() -> int:
             repo,
             "ANALYZE public.mv_analiticas_agotados_base;",
             "ANALYZE mv_analiticas_agotados_base",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "REFRESH MATERIALIZED VIEW public.mv_cpd_ventas_30d_tienda_ref_dia;",
+            "REFRESH mv_cpd_ventas_30d_tienda_ref_dia",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "ANALYZE public.mv_cpd_ventas_30d_tienda_ref_dia;",
+            "ANALYZE mv_cpd_ventas_30d_tienda_ref_dia",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "REFRESH MATERIALIZED VIEW public.mv_metricas_venta_promedio_3_meses_resumen_tienda;",
+            "REFRESH mv_metricas_venta_promedio_3_meses_resumen_tienda",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "ANALYZE public.mv_metricas_venta_promedio_3_meses_resumen_tienda;",
+            "ANALYZE mv_metricas_venta_promedio_3_meses_resumen_tienda",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "REFRESH MATERIALIZED VIEW public.mv_rotacion_base_ref_tienda_talla;",
+            "REFRESH mv_rotacion_base_ref_tienda_talla",
+            logger,
+        )
+
+        ejecutar_sql(
+            repo,
+            "ANALYZE public.mv_rotacion_base_ref_tienda_talla;",
+            "ANALYZE mv_rotacion_base_ref_tienda_talla",
             logger,
         )
 

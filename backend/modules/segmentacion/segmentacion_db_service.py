@@ -1143,18 +1143,37 @@ class SegmentacionDbService:
                     AND llave_naval = ANY(%(llaves)s);
                 """, {"now": now, "id": id_seg, "llaves": llaves_inactivas})
 
-            # 8) estado_segmentacion (regla sugerida):
+            # 8) estado_segmentacion:
             # - Activa si existe al menos un detalle Activo con cantidad>0
             # - Inactiva si no hay ninguno
-            cur.execute("""
+            linea_norm_sql = """
+                CASE
+                    WHEN POSITION(' - ' IN COALESCE(s.linea, '')) > 0
+                        THEN LOWER(TRIM(SPLIT_PART(s.linea, ' - ', 2)))
+                    ELSE LOWER(TRIM(COALESCE(s.linea, '')))
+                END
+            """
+
+            cur.execute(f"""
                 SELECT 1
-                FROM segmentacion_detalle
-                WHERE id_segmentacion = %(id)s
-                AND COALESCE(estado_detalle,'Activo') = 'Activo'
-                AND cantidad > 0
+                FROM public.segmentacion s
+                JOIN public.segmentacion_detalle d
+                ON d.id_segmentacion = s.id_segmentacion
+                JOIN {self._view_tiendas} v
+                ON v.llave_naval = d.llave_naval
+                AND v.estado_tienda_norm = 'activo'
+                AND v.estado_linea_norm = 'activo'
+                AND (
+                        COALESCE(NULLIF(TRIM(s.linea), ''), '') = ''
+                        OR v.linea_norm = {linea_norm_sql}
+                )
+                WHERE s.id_segmentacion = %(id)s
+                AND UPPER(TRIM(COALESCE(d.estado_detalle, 'Activo'))) = 'ACTIVO'
+                AND COALESCE(d.cantidad, 0) > 0
                 LIMIT 1;
             """, {"id": id_seg})
             has_any = cur.fetchone() is not None
+            
             cur.execute("""
                 UPDATE segmentacion
                 SET estado_segmentacion = %(estado)s
@@ -1491,6 +1510,109 @@ class SegmentacionDbService:
             out.setdefault(ref, {"is_segmented": False, "tiendas_activas_segmentadas": 0})
 
         return out
+    
+    def sincronizar_detalles_por_tiendas_activas(self) -> Dict[str, Any]:
+        """
+        Inactiva detalles de segmentación asociados a tiendas o líneas
+        que ya no están activas en la maestra vigente.
+
+        No borra histórico.
+        Actualiza fecha_actualizacion para que el export por rango capture el cambio.
+        """
+        now = datetime.now(TZ_BOGOTA)
+
+        linea_norm_sql = """
+            CASE
+                WHEN POSITION(' - ' IN COALESCE(s.linea, '')) > 0
+                    THEN LOWER(TRIM(SPLIT_PART(s.linea, ' - ', 2)))
+                ELSE LOWER(TRIM(COALESCE(s.linea, '')))
+            END
+        """
+
+        def _tx(cur):
+            cur.execute(f"""
+                UPDATE public.segmentacion_detalle d
+                SET
+                    estado_detalle = 'Inactivo',
+                    fecha_actualizacion = %(now)s
+                FROM public.segmentacion s
+                WHERE s.id_segmentacion = d.id_segmentacion
+                AND UPPER(TRIM(COALESCE(d.estado_detalle, 'Activo'))) = 'ACTIVO'
+                AND NOT EXISTS (
+                        SELECT 1
+                        FROM {self._view_tiendas} v
+                        WHERE v.llave_naval = d.llave_naval
+                        AND v.estado_tienda_norm = 'activo'
+                        AND v.estado_linea_norm = 'activo'
+                        AND (
+                                COALESCE(NULLIF(TRIM(s.linea), ''), '') = ''
+                                OR v.linea_norm = {linea_norm_sql}
+                        )
+                )
+                RETURNING d.id_segmentacion;
+            """, {"now": now})
+
+            rows = cur.fetchall() or []
+            ids_segmentacion = sorted({
+                int(row["id_segmentacion"])
+                for row in rows
+                if row.get("id_segmentacion") is not None
+            })
+
+            if not ids_segmentacion:
+                return {
+                    "ok": True,
+                    "detalles_inactivados": 0,
+                    "segmentaciones_recalculadas": 0,
+                    "segmentaciones_inactivas": 0,
+                    "segmentaciones_activas": 0,
+                }
+
+            cur.execute(f"""
+                UPDATE public.segmentacion s
+                SET estado_segmentacion = CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM public.segmentacion_detalle d
+                        JOIN {self._view_tiendas} v
+                        ON v.llave_naval = d.llave_naval
+                        AND v.estado_tienda_norm = 'activo'
+                        AND v.estado_linea_norm = 'activo'
+                        AND (
+                                COALESCE(NULLIF(TRIM(s.linea), ''), '') = ''
+                                OR v.linea_norm = {linea_norm_sql}
+                        )
+                        WHERE d.id_segmentacion = s.id_segmentacion
+                        AND UPPER(TRIM(COALESCE(d.estado_detalle, 'Activo'))) = 'ACTIVO'
+                        AND COALESCE(d.cantidad, 0) > 0
+                    )
+                        THEN 'Activa'
+                    ELSE 'Inactiva'
+                END
+                WHERE s.id_segmentacion = ANY(%(ids)s)
+                RETURNING s.estado_segmentacion;
+            """, {"ids": ids_segmentacion})
+
+            estados = cur.fetchall() or []
+
+            activas = sum(
+                1 for row in estados
+                if (row.get("estado_segmentacion") or "").strip().lower() == "activa"
+            )
+            inactivas = sum(
+                1 for row in estados
+                if (row.get("estado_segmentacion") or "").strip().lower() == "inactiva"
+            )
+
+            return {
+                "ok": True,
+                "detalles_inactivados": len(rows),
+                "segmentaciones_recalculadas": len(estados),
+                "segmentaciones_inactivas": inactivas,
+                "segmentaciones_activas": activas,
+            }
+
+        return self._repo.run_in_transaction(_tx)
 
     def reset_segmentaciones(self) -> Dict[str, Any]:
         """

@@ -1,11 +1,11 @@
-[30/05/2026  8:13:25.36] INICIO LOG inventario_job
-[30/05/2026  8:13:25.37] INV_BATCH_SIZE=200 
-[30/05/2026  8:13:25.37] INV_API_TIMEOUT=180 
-[30/05/2026  8:13:25.38] INICIO python -m backend.tools.ingestion.inventario_job 
-2026-05-30 08:13:26,394 | INFO | Logger iniciado en consola/stdout.
-2026-05-30 08:13:26,394 | INFO | Config: MODO_INVENTARIO_COMPLETO=True INV_API_TIMEOUT=180
-2026-05-30 08:13:26,882 | INFO | inventario_actual_staging truncada correctamente antes de iniciar la carga.
-2026-05-30 08:13:26,882 | INFO | Llamando API de inventario en modo completo...
+[03/07/2026  7:05:02.34] INICIO LOG inventario_job
+[03/07/2026  7:05:02.35] INV_BATCH_SIZE=200 
+[03/07/2026  7:05:02.36] INV_API_TIMEOUT=180 
+[03/07/2026  7:05:02.37] INICIO python -m backend.tools.ingestion.inventario_job 
+2026-07-03 07:05:03,203 | INFO | Logger iniciado en consola/stdout.
+2026-07-03 07:05:03,204 | INFO | Config: MODO_INVENTARIO_COMPLETO=True INV_API_TIMEOUT=180
+2026-07-03 07:05:03,438 | INFO | inventario_actual_staging truncada correctamente antes de iniciar la carga.
+2026-07-03 07:05:03,438 | INFO | Llamando API de inventario en modo completo...
 Traceback (most recent call last):
   File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
     sock = connection.create_connection(
@@ -83,15 +83,15 @@ During handling of the above exception, another exception occurred:
 Traceback (most recent call last):
   File "<frozen runpy>", line 198, in _run_module_as_main
   File "<frozen runpy>", line 88, in _run_code
-  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 443, in <module>
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 475, in <module>
     main()
     ~~~~^^
-  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 385, in main
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 417, in main
     datos, truncado = llamar_api_inventario_completo(timeout_sec=timeout)
                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 357, in llamar_api_inventario_completo
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 389, in llamar_api_inventario_completo
     raise ultimo_error
-  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 332, in llamar_api_inventario_completo
+  File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\tools\ingestion\inventario_job.py", line 364, in llamar_api_inventario_completo
     r = requests.post(url, json=body, timeout=timeout_sec)
   File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\api.py", line 115, in post
     return request("post", url, data=data, json=json, **kwargs)
@@ -105,4 +105,4 @@ Traceback (most recent call last):
   File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\adapters.py", line 677, in send
     raise ConnectionError(e, request=request)
 requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=5031): Max retries exceeded with url: /api/sqlserver/inventario-existencias/consultar (Caused by NewConnectionError("HTTPConnection(host='localhost', port=5031): Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión"))
-[30/05/2026  8:13:45.41] ERROR inventario_job rc=1 log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_job.log 
+[03/07/2026  7:05:21.92] ERROR inventario_job rc=1 log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_job.log 

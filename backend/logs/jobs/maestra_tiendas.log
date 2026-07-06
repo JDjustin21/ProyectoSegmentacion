@@ -1,0 +1,5 @@
+[01/07/2026  7:00:01.38] INICIO LOG maestra_tiendas
+[01/07/2026  7:00:01.44] INICIO maestra_tiendas_job.py 
+[01/07/2026  7:00:01.44] SOURCE=\\svr-fs\CREYTEX\GESTION FINANCIERA\BI\4. Tablas Maestras\9. Maestra de Tiendas\MAESTRA_TIENDAS_POR_LINEA.txt 
+NO CHANGES: la versión activa ya corresponde a este archivo (hash igual).
+[01/07/2026  7:00:02.84] OK maestra_tiendas_job log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\maestra_tiendas.log 

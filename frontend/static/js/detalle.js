@@ -68,12 +68,26 @@
     };
   }
 
+  function getLlavesTiendasFiltradas() {
+    return (Array.isArray(state.tiendas) ? state.tiendas : [])
+      .map(t => norm(t.llave_naval))
+      .filter(Boolean);
+  }
+
   async function fetchJson(url) {
     const res = await fetch(url, { headers: { "Accept": "application/json" } });
+
     if (!res.ok) {
+      const contentType = res.headers.get("content-type") || "";
       const text = await res.text();
-      throw new Error(`HTTP ${res.status} - ${text}`);
+
+      if (contentType.includes("text/html")) {
+        throw new Error(`HTTP ${res.status} - El servidor devolvió una página HTML de error. Revisa los logs del servidor.`);
+      }
+
+      throw new Error(`HTTP ${res.status} - ${text.slice(0, 500)}`);
     }
+
     return res.json();
   }
 
@@ -210,6 +224,7 @@
       detalleByLlaveTalla: {},   // llave_naval -> talla -> [{ean, cpd, venta_promedio_mensual}, ...]
       partLineaByLlave: {},     // llave_naval -> { participacion_venta_linea }
       existenciaByLlaveTalla: {}, // llave_naval -> talla -> existencia
+      rotacionTotalReferencia: null,
     },
 
     ref: {
@@ -282,6 +297,19 @@
     // soporta "0E-20" y similares
     const n = Number(s.replace(",", "."));
     return Number.isFinite(n) ? n : null;
+  }
+
+  function firstNumber(row, keys) {
+    if (!row || typeof row !== "object") return null;
+
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+
+      const n = toNumberOrNull(row[key]);
+      if (n !== null) return n;
+    }
+
+    return null;
   }
 
   function ventaPromedioTienda(resumen) {
@@ -463,43 +491,38 @@
   }
 
     // Actualizamos los valores de las métricas en el DOM
-  function calcularYActualizarMetricas() {
-
+  function calcularYActualizarMetricas(dom) {
     const { resumenByLlave } = state.metricas;
 
-    // Inicializamos los totales
-    let totalCPD = 0;
     let totalVenta = 0;
-    let sumRot = 0;
-    let nRot = 0; // para contar cuántas tiendas tienen rotación válida y así sacar promedio
 
-    // Sumamos las métricas de las tiendas filtradas
     const tiendasFiltradas = Array.isArray(state.tiendas) ? state.tiendas : [];
+
     tiendasFiltradas.forEach(tienda => {
       const llave = norm(tienda.llave_naval);
       if (!llave || !resumenByLlave[llave]) return;
 
       const resumen = resumenByLlave[llave];
-
-      totalCPD += toNumberOrZero(resumen.cpd_total);
       totalVenta += toNumberOrZero(resumen.venta_promedio_mensual_total);
-
-      const rot = toNumberOrNull(resumen.rotacion_tienda);
-      if (rot !== null) {
-        sumRot += rot;
-        nRot += 1;
-      }
     });
 
-    // Actualizamos las métricas en el DOM
-    const rotacionTotal = (nRot > 0) ? (sumRot / nRot) : null;
-    
+    const cpdReferencia = toNumberOrNull(
+      state.metricas?.cpdReferenciaFiltrada?.cpd_referencia
+    );
+
+    const rotacionTotal = firstNumber(state.metricas?.rotacionTotalReferencia, [
+      "rotacion_total",
+      "rotacion_referencia",
+      "rotacion"
+    ]);
+
     const cpdTotalEl = document.getElementById("cpd-total");
     const ventaTotalEl = document.getElementById("venta-total");
     const rotTotalEl = document.getElementById("rotacion-total");
 
-    if (cpdTotalEl) cpdTotalEl.textContent = fmtFixed(totalCPD, 1);
+    if (cpdTotalEl) cpdTotalEl.textContent = fmtFixed(cpdReferencia, 1);
     if (ventaTotalEl) ventaTotalEl.textContent = fmtFixed(totalVenta, 1);
+
     if (rotTotalEl) {
       rotTotalEl.textContent =
         rotacionTotal !== null ? (rotacionTotal * 100).toFixed(1) + "%" : "—";
@@ -646,16 +669,36 @@
   }
 
   async function cargarMetricas(dom) {
-    const usp = new URLSearchParams();
-    usp.set("referenciaSku", state.ref.referenciaSku);
-
     const lineaParaConsulta = norm(state.ref.lineaTexto) || norm(state.ref.lineaRaw);
-    if (lineaParaConsulta) {
-      usp.set("linea", lineaParaConsulta);
+    const llavesFiltradas = getLlavesTiendasFiltradas();
+
+    const payload = {
+      referenciaSku: state.ref.referenciaSku,
+      linea: lineaParaConsulta,
+      llavesNaval: llavesFiltradas,
+    };
+
+    const res = await fetch(API_METRICAS, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const contentType = res.headers.get("content-type") || "";
+      const text = await res.text();
+
+      if (contentType.includes("text/html")) {
+        throw new Error(`HTTP ${res.status} - El servidor devolvió una página HTML de error. Revisa los logs del servidor.`);
+      }
+
+      throw new Error(`HTTP ${res.status} - ${text.slice(0, 500)}`);
     }
 
-    const url = `${API_METRICAS}?${usp.toString()}`;
-    const json = await fetchJson(url);
+    const json = await res.json();
 
     if (!json.ok) throw new Error(json.error || "Error consultando métricas");
 
@@ -667,9 +710,14 @@
       ? data.participacionLineaPorTienda
       : [];
 
-    // =========================
-    // Existencia por talla (independiente)
-    // =========================
+    const cpdReferenciaFiltrada = data.cpdReferenciaFiltrada || null;
+
+    const rotacionTotalReferencia =
+      data.rotacionTotalReferencia ||
+      data.rotacionTotalReferenciaFiltrada ||
+      data.rotacion_total_referencia ||
+      null;
+
     const existenciaByLlaveTalla = {};
     existenciaArr.forEach(r => {
       const llave = norm(r.llave_naval);
@@ -677,14 +725,21 @@
       if (!llave || !talla) return;
 
       if (!existenciaByLlaveTalla[llave]) existenciaByLlaveTalla[llave] = {};
-      existenciaByLlaveTalla[llave][talla] = toNumberOrZero(r.existencia_talla);
+            const existencia = firstNumber(r, [
+        "existencia_talla",
+        "existencia_total",
+        "existencia",
+        "disponible_total",
+        "disponible"
+      ]);
+
+      if (existencia !== null) {
+        existenciaByLlaveTalla[llave][talla] = existencia;
+      }
     });
 
-    // =========================
-    // Resumen por tienda (promedio rotación tienda)
-    // =========================
     const resumenByLlave = {};
-    const acc = {}; // llave -> { sumRot, nRot }
+    const acc = {};
 
     resumen.forEach(r => {
       const llave = norm(r.llave_naval);
@@ -705,9 +760,6 @@
       resumenByLlave[llave].rotacion_tienda = a.nRot > 0 ? (a.sumRot / a.nRot) : null;
     });
 
-    // =========================
-    // Detalle por talla
-    // =========================
     const detalleByLlaveTalla = {};
     detalle.forEach(r => {
       const llave = norm(r.llave_naval);
@@ -719,16 +771,12 @@
 
       detalleByLlaveTalla[llave][talla].push({
         ...r,
-        // mantenemos null si viene null (para que el render muestre "—")
         rotacion_talla: (r.rotacion_talla === undefined ? null : r.rotacion_talla),
         cpd: (r.cpd === undefined ? null : r.cpd),
         venta_promedio_mensual: (r.venta_promedio_mensual === undefined ? null : r.venta_promedio_mensual),
       });
     });
 
-    // =========================
-    // Participación por línea
-    // =========================
     const partLineaByLlave = {};
     participacionLineaArr.forEach(r => {
       const llave = norm(r.llave_naval);
@@ -746,6 +794,8 @@
       detalleByLlaveTalla,
       partLineaByLlave,
       existenciaByLlaveTalla,
+      cpdReferenciaFiltrada,
+      rotacionTotalReferencia,
       idSegmentacionActual: state.metricas?.idSegmentacionActual || null,
     };
 
@@ -1179,8 +1229,9 @@
       // Importante: al abrir, dejamos filtros en blanco (coherencia)
       limpiarFiltros(dom);
 
+      await cargarTiendas(dom);
+
       await Promise.all([
-        cargarTiendas(dom),
         cargarMetricas(dom),
         cargarUltimaSegmentacion(),
         cargarSegmentacionesCandidatas(),
@@ -1233,6 +1284,7 @@
 
     try {
       await cargarTiendas(dom);
+      await cargarMetricas(dom);
       renderTiendas(dom);
       calcularYActualizarMetricas(dom);
     } catch (err) {

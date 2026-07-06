@@ -48,8 +48,13 @@ def build_hash_fila(row: dict) -> str:
     """
     Construye la clave única lógica de una fila de inventario.
 
-    La clave representa el grano usado para evitar duplicados:
-    referencia_sku + ean + talla + bodega + codigo_siesa.
+    Grano lógico:
+    referencia_sku + ean + talla + bodega + codigo_siesa
+
+    Nota:
+    codigo_siesa representa el DEP calculado igual que Power BI:
+    - Para bodega 10030, sale de f_desc_ubicacion_aux.
+    - Para las demás bodegas, sale de f_id_ubicacion_aux.
     """
     parts = [
         norm(row.get("referencia_sku")),
@@ -106,6 +111,9 @@ def consolidar_filas_por_hash(rows: list[dict]) -> tuple[list[dict], int]:
             "bodega",
             "linea",
             "codigo_siesa",
+            "ubicacion",
+            "desc_ubicacion_aux",
+            "llave_dep2_calculada",
             "llave_naval",
             "cod_dependencia",
         ]:
@@ -178,6 +186,9 @@ def reemplazar_snapshot_actual_desde_staging(repo: PostgresRepository) -> None:
       existencia,
       linea,
       codigo_siesa,
+      ubicacion,
+      desc_ubicacion_aux,
+      llave_dep2_calculada,
       llave_naval,
       cod_dependencia,
       fecha_ultima_actualizacion,
@@ -192,6 +203,9 @@ def reemplazar_snapshot_actual_desde_staging(repo: PostgresRepository) -> None:
       existencia,
       linea,
       codigo_siesa,
+      ubicacion,
+      desc_ubicacion_aux,
+      llave_dep2_calculada,
       llave_naval,
       cod_dependencia,
       fecha_ultima_actualizacion,
@@ -229,6 +243,9 @@ def insertar_lote_staging_bulk(repo: PostgresRepository, rows: list[dict]) -> in
       existencia,
       linea,
       codigo_siesa,
+      ubicacion,
+      desc_ubicacion_aux,
+      llave_dep2_calculada,
       llave_naval,
       cod_dependencia,
       fecha_ultima_actualizacion,
@@ -245,6 +262,9 @@ def insertar_lote_staging_bulk(repo: PostgresRepository, rows: list[dict]) -> in
       existencia = EXCLUDED.existencia,
       linea = EXCLUDED.linea,
       codigo_siesa = EXCLUDED.codigo_siesa,
+      ubicacion = EXCLUDED.ubicacion,
+      desc_ubicacion_aux = EXCLUDED.desc_ubicacion_aux,
+      llave_dep2_calculada = EXCLUDED.llave_dep2_calculada,
       llave_naval = EXCLUDED.llave_naval,
       cod_dependencia = EXCLUDED.cod_dependencia,
       fecha_ultima_actualizacion = now();
@@ -261,13 +281,16 @@ def insertar_lote_staging_bulk(repo: PostgresRepository, rows: list[dict]) -> in
             int(r.get("existencia") or 0),
             norm(r.get("linea")),
             norm(r.get("codigo_siesa")),
+            norm(r.get("ubicacion")),
+            norm(r.get("desc_ubicacion_aux")),
+            norm(r.get("llave_dep2_calculada")),
             norm(r.get("llave_naval")),
             norm(r.get("cod_dependencia")),
             norm(r.get("hash_fila")),
         ))
 
     def _tx(cur):
-        template = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now(),%s)"
+        template = "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now(),%s)"
         execute_values(cur, sql, values, template=template, page_size=2000)
 
     repo.run_in_transaction(_tx)
@@ -296,11 +319,20 @@ def mapear_datos_api(item: dict) -> dict:
         "disponible": int(pick(item, "Disponible", "disponible", default=0) or 0),
         "existencia": int(pick(item, "Existencia", "existencia", default=0) or 0),
         "linea": norm(pick(item, "Linea", "linea")),
+
+        # DEP calculado desde la API.
+        # Para bodega 10030 debe venir desde f_desc_ubicacion_aux.
+        # Para las demás bodegas debe venir desde f_id_ubicacion_aux.
         "codigo_siesa": norm(pick(item, "Codigo_siesa", "codigo_siesa", "CodigoSiesa", "codigoSiesa")),
+
+        # Campos nuevos para replicar la lógica del Excel/Power BI.
+        "ubicacion": norm(pick(item, "Ubicacion", "ubicacion")),
+        "desc_ubicacion_aux": norm(pick(item, "DescUbicacionAux", "descUbicacionAux", "desc_ubicacion_aux")),
+        "llave_dep2_calculada": norm(pick(item, "LlaveDep2Calculada", "llaveDep2Calculada", "llave_dep2_calculada")),
+
         "llave_naval": norm(pick(item, "Llave_naval", "llave_naval", default="")),
         "cod_dependencia": norm(pick(item, "Cod_dependencia", "cod_dependencia", default="")),
     }
-
 
 def llamar_api_inventario_completo(
     timeout_sec: int = 300,

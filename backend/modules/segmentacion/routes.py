@@ -71,6 +71,80 @@ def _pg_repo() -> PostgresRepository:
 def _svc_pg(repo: PostgresRepository) -> SegmentacionDbService:
     return SegmentacionDbService(repo, POSTGRES_TIENDAS_VIEW, METRICAS_EXISTENCIA_TALLA_VIEW)
 
+def _pg_relation_name(name: str, default_schema: str = "public") -> str:
+    """
+    Valida nombres de vistas/MV configurados por settings antes de usarlos en SQL dinámico.
+    Acepta:
+    - mv_rotacion_base_ref_tienda_talla
+    - public.mv_rotacion_base_ref_tienda_talla
+    """
+    raw = (name or "").strip()
+    if not raw:
+        raise RuntimeError("Nombre de relación vacío.")
+
+    parts = raw.split(".")
+    if len(parts) == 1:
+        schema = default_schema
+        relation = parts[0]
+    elif len(parts) == 2:
+        schema, relation = parts
+    else:
+        raise RuntimeError(f"Nombre de relación inválido: {raw}")
+
+    ident_re = r"^[A-Za-z_][A-Za-z0-9_]*$"
+    if not re.match(ident_re, schema) or not re.match(ident_re, relation):
+        raise RuntimeError(f"Nombre de relación inválido: {raw}")
+
+    return f"{schema}.{relation}"
+
+
+def _obtener_rotacion_total_referencia(
+    repo: PostgresRepository,
+    referencia_sku: str,
+    llaves: list[str],
+) -> dict:
+    """
+    Calcula la rotación total correcta:
+
+        venta_total / (venta_total + inventario_pv)
+
+    Se calcula desde la MV base para respetar filtros por tienda.
+    """
+    mv_rotacion = _pg_relation_name(settings.METRICAS_ROTACION_BASE_MV)
+
+    sql = f"""
+        SELECT
+            COALESCE(SUM(venta_total), 0) AS venta_total,
+            COALESCE(SUM(inventario_pv), 0) AS inventario_pv,
+            CASE
+                WHEN COALESCE(SUM(venta_total), 0) + COALESCE(SUM(inventario_pv), 0) > 0
+                    THEN COALESCE(SUM(venta_total), 0)::numeric
+                         / (
+                            COALESCE(SUM(venta_total), 0)
+                            + COALESCE(SUM(inventario_pv), 0)
+                         )
+                ELSE NULL
+            END AS rotacion_total
+        FROM {mv_rotacion}
+        WHERE referencia_sku = %(referencia_sku)s
+          AND (
+                %(filtrar_llaves)s = FALSE
+                OR llave_naval = ANY(%(llaves)s)
+          );
+    """
+
+    row = repo.fetch_one(sql, {
+        "referencia_sku": referencia_sku,
+        "filtrar_llaves": bool(llaves),
+        "llaves": llaves,
+    }) or {}
+
+    return {
+        "venta_total": row.get("venta_total"),
+        "inventario_pv": row.get("inventario_pv"),
+        "rotacion_total": row.get("rotacion_total"),
+    }
+
 def _obtener_snapshot_updated_at():
     """
     Retorna solo la fecha del snapshot vigente.
@@ -273,24 +347,62 @@ def api_ultima_segmentacion():
     return jsonify({"ok": True, "data": data})
 
 
-@segmentacion_bp.route("/api/metricas", methods=["GET"])
+@segmentacion_bp.route("/api/metricas", methods=["GET", "POST"])
 @login_required
 def api_metricas():
     try:
-        referencia_sku = (request.args.get("referenciaSku") or "").strip()
-        llave_naval = (request.args.get("llave_naval") or "").strip() or None
+        if request.method == "POST":
+            payload = request.get_json(silent=True) or {}
+
+            referencia_sku = (payload.get("referenciaSku") or "").strip()
+            llave_naval = (payload.get("llave_naval") or "").strip() or None
+            linea = (payload.get("linea") or "").strip()
+            dependencia = (payload.get("dependencia") or "").strip() or None
+
+            llaves_payload = payload.get("llavesNaval") or payload.get("llaves") or []
+
+            if isinstance(llaves_payload, list):
+                llaves = [
+                    str(x).strip()
+                    for x in llaves_payload
+                    if str(x).strip()
+                ]
+            elif isinstance(llaves_payload, str):
+                llaves = [
+                    x.strip()
+                    for x in llaves_payload.split(",")
+                    if x.strip()
+                ]
+            else:
+                llaves = []
+
+        else:
+            referencia_sku = (request.args.get("referenciaSku") or "").strip()
+            llave_naval = (request.args.get("llave_naval") or "").strip() or None
+            linea = (request.args.get("linea") or "").strip()
+            dependencia = (request.args.get("dependencia") or "").strip() or None
+
+            llaves_raw = (
+                request.args.get("llaves")
+                or request.args.get("llavesNaval")
+                or ""
+            ).strip()
+
+            llaves = [
+                x.strip()
+                for x in llaves_raw.split(",")
+                if x.strip()
+            ] if llaves_raw else []
 
         if not referencia_sku:
             return jsonify({"ok": False, "error": "Falta referenciaSku"}), 400
 
         repo = PostgresRepository(settings.POSTGRES_DSN)
 
-        linea = (request.args.get("linea") or "").strip()
-        dependencia = (request.args.get("dependencia") or "").strip() or None
-        llaves_raw = (request.args.get("llaves") or "").strip()
-        llaves = [x.strip() for x in llaves_raw.split(",") if x.strip()] if llaves_raw else []
+        llaves_consulta = llaves or ([llave_naval] if llave_naval else [])
 
         t0 = time.perf_counter()
+
         resumen, detalle = repo.obtener_metricas_por_referencia(
             referencia_sku=referencia_sku,
             llave_naval=llave_naval,
@@ -300,8 +412,9 @@ def api_metricas():
             view_prom_tienda=settings.METRICAS_VENTA_PROM_TIENDA_VIEW,
             view_rotacion_talla=settings.METRICAS_ROTACION_TALLA_VIEW,
             view_rotacion_tienda=settings.METRICAS_ROTACION_TIENDA_VIEW,
-            llaves=llaves,
+            llaves=llaves_consulta,
         )
+
         t1 = time.perf_counter()
 
         existencia = repo.obtener_existencia_por_talla(
@@ -309,15 +422,8 @@ def api_metricas():
             llave_naval=llave_naval,
             view_existencia_talla=settings.METRICAS_EXISTENCIA_TALLA_VIEW,
         )
-        t2 = time.perf_counter()
 
-        current_app.logger.info(
-            "[METRICAS] ref=%s resumen+detalle=%.2fms existencia=%.2fms total=%.2fms",
-            referencia_sku,
-            (t1 - t0) * 1000,
-            (t2 - t1) * 1000,
-            (t2 - t0) * 1000
-        )
+        t2 = time.perf_counter()
 
         part_linea = []
         if linea:
@@ -327,6 +433,37 @@ def api_metricas():
                 view_part_linea=settings.METRICAS_PART_VENTA_LINEA_VIEW,
             )
 
+        t3 = time.perf_counter()
+
+        cpd_referencia_filtrada = repo.obtener_cpd_referencia_filtrada(
+            referencia_sku=referencia_sku,
+            llaves=llaves_consulta,
+            mv_cpd_ref_dia=settings.METRICAS_CPD_REF_DIA_MV,
+        )
+
+        t4 = time.perf_counter()
+
+        rotacion_total_referencia = _obtener_rotacion_total_referencia(
+            repo=repo,
+            referencia_sku=referencia_sku,
+            llaves=llaves_consulta,
+        )
+
+        t5 = time.perf_counter()
+
+        current_app.logger.info(
+            "[METRICAS] method=%s ref=%s llaves=%s resumen+detalle=%.2fms existencia=%.2fms part_linea=%.2fms cpd_ref=%.2fms rot_total=%.2fms total=%.2fms",
+            request.method,
+            referencia_sku,
+            len(llaves_consulta),
+            (t1 - t0) * 1000,
+            (t2 - t1) * 1000,
+            (t3 - t2) * 1000,
+            (t4 - t3) * 1000,
+            (t5 - t4) * 1000,
+            (t5 - t0) * 1000,
+        )
+
         return jsonify({
             "ok": True,
             "data": {
@@ -334,13 +471,19 @@ def api_metricas():
                 "resumenPorTienda": resumen,
                 "detallePorTalla": detalle,
                 "existenciaPorTalla": existencia,
-                "participacionLineaPorTienda": part_linea
+                "participacionLineaPorTienda": part_linea,
+                "cpdReferenciaFiltrada": cpd_referencia_filtrada,
+                "rotacionTotalReferencia": rotacion_total_referencia,
             }
         })
-    
+
     except Exception as ex:
         current_app.logger.exception("Error en /api/metricas")
-        return jsonify({"ok": False, "error": str(ex), "trace": traceback.format_exc()}), 500
+        return jsonify({
+            "ok": False,
+            "error": str(ex),
+            "trace": traceback.format_exc()
+        }), 500
     
 
 @segmentacion_bp.get("/api/metricas/participacion-linea")

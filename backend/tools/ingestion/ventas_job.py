@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+#backend/tools/ingestion/ventas_job.py
 
 import argparse
 import hashlib
@@ -341,11 +342,17 @@ def load_staging_raw(
     return total_rows
 
 
-def stage_to_final(cur, id_version_ventas: int) -> int:
+def reemplazar_final_desde_staging(cur, id_version_ventas: int) -> int:
     """
-    Convierte staging_raw -> ventas_movimientos.
-    Retorna cantidad insertada según rowcount del cursor.
+    Reemplaza ventas_movimientos con la nueva versión cargada en staging.
+
+    Regla:
+    - ventas_movimientos NO debe acumular versiones.
+    - Solo debe contener los movimientos de la versión activa actual.
+    - ventas_version_archivo conserva el historial de cargas.
     """
+    cur.execute("TRUNCATE TABLE public.ventas_movimientos RESTART IDENTITY;")
+
     cur.execute("""
         INSERT INTO public.ventas_movimientos (
             id_version_ventas,
@@ -444,7 +451,7 @@ def stage_to_final(cur, id_version_ventas: int) -> int:
             ) AS hash_fila
         FROM public.ventas_staging_raw sr
         WHERE sr.id_version_ventas = %s
-        ON CONFLICT (hash_fila) DO NOTHING
+        ON CONFLICT (hash_fila) DO NOTHING;
     """, (id_version_ventas,))
 
     return int(cur.rowcount) if cur.rowcount is not None else 0
@@ -546,7 +553,13 @@ def main() -> int:
 
             update_version_rowcount(cur, new_id, filas)
 
-            inserted_final = stage_to_final(cur, new_id)
+            inserted_final = reemplazar_final_desde_staging(cur, new_id)
+
+            if inserted_final <= 0:
+                raise RuntimeError(
+                    "La carga terminó sin filas insertadas en ventas_movimientos. "
+                    "Por seguridad no se activa la nueva versión."
+                )
 
             activate_version(cur, new_id)
 

@@ -396,97 +396,175 @@ class PostgresRepository:
         return resumen, detalle
 
     def obtener_existencia_por_talla(
-        self,
-        referencia_sku: str,
-        llave_naval: str | None,
-        view_existencia_talla: str
-    ) -> List[Dict[str, Any]]:
-        """
-        Consulta existencia actual por talla desde una vista de PostgreSQL.
+                self,
+                referencia_sku: str,
+                llave_naval: str | None,
+                view_existencia_talla: str
+            ) -> List[Dict[str, Any]]:
+                """
+                Consulta existencia actual por talla desde una vista de PostgreSQL.
 
-        Esta consulta no depende de ventas. Por eso puede devolver inventario
-        incluso para referencias que nunca han vendido.
-        """
-        v_ex = _safe_view_name(view_existencia_talla)
+                Esta consulta no depende de ventas. Por eso puede devolver inventario
+                incluso para referencias que nunca han vendido.
+                """
+                v_ex = _safe_view_name(view_existencia_talla)
 
-        ref = (referencia_sku or "").strip()
-        if not ref:
-            return []
+                ref = (referencia_sku or "").strip()
+                if not ref:
+                    return []
 
-        params = {
-            "ref": ref,
-            "llave": (llave_naval or "").strip()
-        }
+                params = {
+                    "ref": ref,
+                    "llave": (llave_naval or "").strip()
+                }
 
-        where_llave = ""
-        if params["llave"]:
-            where_llave = " AND e.llave_naval = %(llave)s "
+                where_llave = ""
+                if params["llave"]:
+                    where_llave = " AND e.llave_naval = %(llave)s "
 
-        sql = f"""
-            SELECT
-                e.llave_naval,
-                e.referencia_sku,
-                e.talla,
-                e.ean,
-                e.existencia_talla,
-                e.disponible_talla,
-                e.fecha_ultima_actualizacion
-            FROM public.{v_ex} e
-            WHERE e.referencia_sku = %(ref)s
-            {where_llave}
-            ORDER BY e.llave_naval, e.talla;
-        """
+                sql = f"""
+                    SELECT
+                        e.llave_naval,
+                        e.referencia_sku,
+                        e.talla,
+                        e.ean,
+                        e.existencia_talla,
+                        e.disponible_talla,
+                        e.fecha_ultima_actualizacion
+                    FROM public.{v_ex} e
+                    WHERE e.referencia_sku = %(ref)s
+                    {where_llave}
+                    ORDER BY e.llave_naval, e.talla;
+                """
 
-        return self.fetch_all(sql, params)
+                return self.fetch_all(sql, params)
+
+    def obtener_cpd_referencia_filtrada(
+                self,
+                referencia_sku: str,
+                llaves: Optional[List[str]],
+                mv_cpd_ref_dia: str
+            ) -> Optional[Dict[str, Any]]:
+                """
+                Calcula el CPD de referencia para el conjunto de tiendas filtradas.
+
+                Regla de negocio:
+                - No suma CPD tienda.
+                - Suma unidades de la referencia en las tiendas filtradas.
+                - Toma una única primera fecha de venta para la referencia dentro de esas tiendas.
+                - Divide por los días desde esa primera venta hasta hoy, con máximo 30 días.
+
+                Si no se envían llaves, calcula el CPD general de la referencia.
+                """
+                mv_cpd = _safe_view_name(mv_cpd_ref_dia)
+
+                ref = (referencia_sku or "").strip()
+                if not ref:
+                    return None
+
+                llaves_limpias = [
+                    str(x).strip()
+                    for x in (llaves or [])
+                    if str(x).strip()
+                ]
+
+                params = {
+                    "ref": ref,
+                    "llaves": llaves_limpias,
+                }
+
+                filtro_llaves = ""
+                if llaves_limpias:
+                    filtro_llaves = "AND v.llave_naval = ANY(%(llaves)s)"
+
+                sql = f"""
+                    WITH base AS (
+                        SELECT
+                            v.referencia_sku,
+                            v.fecha_movimiento,
+                            v.unidades_dia
+                        FROM public.{mv_cpd} v
+                        WHERE v.referencia_sku = %(ref)s
+                        {filtro_llaves}
+                    ),
+                    agg AS (
+                        SELECT
+                            referencia_sku,
+                            SUM(unidades_dia) AS unidades_total,
+                            MIN(fecha_movimiento) AS primera_fecha_venta,
+                            MAX(fecha_movimiento) AS ultima_fecha_venta
+                        FROM base
+                        GROUP BY referencia_sku
+                    )
+                    SELECT
+                        referencia_sku,
+                        unidades_total,
+                        primera_fecha_venta,
+                        ultima_fecha_venta,
+                        LEAST(
+                            30,
+                            GREATEST(1, CURRENT_DATE - primera_fecha_venta + 1)
+                        )::numeric AS dias_divisor,
+                        ROUND(
+                            unidades_total / LEAST(
+                                30,
+                                GREATEST(1, CURRENT_DATE - primera_fecha_venta + 1)
+                            )::numeric,
+                            2
+                        ) AS cpd_referencia
+                    FROM agg;
+                """
+
+                return self.fetch_one(sql, params)
 
     def obtener_participacion_linea_por_tiendas(
-        self,
-        linea: str,
-        dependencia: str | None,
-        view_part_linea: str
-    ) -> List[Dict[str, Any]]:
-        """
-        Consulta la participación de venta de una línea por tienda.
+            self,
+            linea: str,
+            dependencia: str | None,
+            view_part_linea: str
+        ) -> List[Dict[str, Any]]:
+            """
+            Consulta la participación de venta de una línea por tienda.
 
-        La línea puede recibirse con código, por ejemplo:
-            13 - Hombre Deportivo
+            La línea puede recibirse con código, por ejemplo:
+                13 - Hombre Deportivo
 
-        La consulta normaliza ese valor para compararlo también contra:
-            Hombre Deportivo
-        """
-        v_part = _safe_view_name(view_part_linea)
+            La consulta normaliza ese valor para compararlo también contra:
+                Hombre Deportivo
+            """
+            v_part = _safe_view_name(view_part_linea)
 
-        linea_in = (linea or "").strip()
-        if not linea_in:
-            return []
+            linea_in = (linea or "").strip()
+            if not linea_in:
+                return []
 
-        dep_in = (dependencia or "").strip() if dependencia else ""
+            dep_in = (dependencia or "").strip() if dependencia else ""
 
-        params = {
-            "linea": linea_in,
-            "dep": dep_in
-        }
+            params = {
+                "linea": linea_in,
+                "dep": dep_in
+            }
 
-        where_dep = ""
-        if dep_in:
-            where_dep = " AND dependencia = %(dep)s "
+            where_dep = ""
+            if dep_in:
+                where_dep = " AND dependencia = %(dep)s "
 
-        sql = f"""
-            SELECT
-                dependencia,
-                linea,
-                llave_naval,
-                cod_bodega,
-                desc_dependencia,
-                venta_promedio_mensual_linea_tienda,
-                venta_promedio_mensual_linea_cliente,
-                participacion_venta_linea
-            FROM public.{v_part}
-            WHERE
-                lower(trim(regexp_replace(linea, '^[0-9]+\\s*-\\s*', ''))) =
-                lower(trim(regexp_replace(%(linea)s, '^[0-9]+\\s*-\\s*', '')))
-                {where_dep}
-            ORDER BY dependencia, linea, desc_dependencia;
-        """
+            sql = f"""
+                SELECT
+                    dependencia,
+                    linea,
+                    llave_naval,
+                    cod_bodega,
+                    desc_dependencia,
+                    venta_promedio_mensual_linea_tienda,
+                    venta_promedio_mensual_linea_cliente,
+                    participacion_venta_linea
+                FROM public.{v_part}
+                WHERE
+                    lower(trim(regexp_replace(linea, '^[0-9]+\\s*-\\s*', ''))) =
+                    lower(trim(regexp_replace(%(linea)s, '^[0-9]+\\s*-\\s*', '')))
+                    {where_dep}
+                ORDER BY dependencia, linea, desc_dependencia;
+            """
 
-        return self.fetch_all(sql, params)
+            return self.fetch_all(sql, params)

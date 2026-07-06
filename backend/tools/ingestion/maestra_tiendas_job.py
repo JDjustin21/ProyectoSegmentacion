@@ -8,6 +8,13 @@ from pathlib import Path
 import psycopg2
 import psycopg2.extras
 
+from backend.config.settings import (
+    METRICAS_EXISTENCIA_TALLA_VIEW,
+    POSTGRES_TIENDAS_VIEW,
+)
+from backend.modules.segmentacion.segmentacion_db_service import SegmentacionDbService
+from backend.repositories.postgres_repository import PostgresRepository
+
 
 EXPECTED_COLUMNS = [
     "COD_BODEGA",
@@ -44,6 +51,23 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
 
 def open_pg(dsn: str):
     return psycopg2.connect(dsn)
+
+def sync_segmentacion_por_maestra_tiendas(pg_dsn: str) -> dict:
+    """
+    Sincroniza las segmentaciones después de actualizar la maestra de tiendas.
+
+    Regla de negocio:
+    una segmentación solo sigue activa si la combinación tienda + línea
+    continúa activa en la maestra vigente.
+    """
+    repo = PostgresRepository(pg_dsn)
+    svc = SegmentacionDbService(
+        repo,
+        POSTGRES_TIENDAS_VIEW,
+        METRICAS_EXISTENCIA_TALLA_VIEW,
+    )
+
+    return svc.sincronizar_detalles_por_tiendas_activas()
 
 
 def get_active_version_hash(cur) -> str | None:
@@ -195,11 +219,11 @@ def validate_staging(cur):
     if total_con_llave == 0:
         raise ValueError("Ninguna fila en staging tiene llave_naval. Se cancela la carga.")
 
-
-def insert_filas(cur):
+def insert_filas(cur, id_version: int):
     cur.execute(
         """
         INSERT INTO public.maestra_tiendas_filas (
+            id_version,
             llave_naval,
             cod_bodega,
             cod_dependencia,
@@ -216,6 +240,7 @@ def insert_filas(cur):
             llave_dep2
         )
         SELECT
+            %s AS id_version,
             COALESCE(TRIM(llave_naval), '') AS llave_naval,
             COALESCE(TRIM(cod_bodega), '') AS cod_bodega,
             COALESCE(TRIM(cod_dependencia), '') AS cod_dependencia,
@@ -244,9 +269,9 @@ def insert_filas(cur):
             COALESCE(TRIM(llave_dep2), '') AS llave_dep2
         FROM public.maestra_tiendas_staging_raw
         WHERE COALESCE(TRIM(llave_naval), '') <> '';
-        """
+        """,
+        (id_version,),
     )
-
 
 def read_tsv(path: Path, encoding: str) -> list[dict]:
     with path.open("r", encoding=encoding, errors="replace", newline="") as f:
@@ -288,6 +313,10 @@ def main():
             if active_hash == file_hash:
                 conn.rollback()
                 print("NO CHANGES: la versión activa ya corresponde a este archivo (hash igual).")
+
+                sync_result = sync_segmentacion_por_maestra_tiendas(args.pg_dsn)
+                print(f"SYNC SEGMENTACION: {sync_result}")
+
                 return
 
             new_id_version = create_new_version(
@@ -302,15 +331,19 @@ def main():
             validate_staging(cur)
 
             truncate_filas(cur)
-            insert_filas(cur)
+            insert_filas(cur, new_id_version)
 
             set_version_active(cur, new_id_version)
 
         conn.commit()
+
         print(
             f"OK: carga completada. "
             f"id_version={new_id_version}, filas_archivo={filas_total}"
         )
+
+        sync_result = sync_segmentacion_por_maestra_tiendas(args.pg_dsn)
+        print(f"SYNC SEGMENTACION: {sync_result}")
 
     except Exception:
         conn.rollback()

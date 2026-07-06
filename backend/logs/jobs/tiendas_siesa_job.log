@@ -1,5 +1,5 @@
-[11/05/2026 12:57:48.00] INICIO LOG tiendas_siesa_job
-[11/05/2026 12:57:48.13] INICIO tiendas_siesa_job.py 
-[11/05/2026 12:57:48.13] SOURCE=\\svr-fs\CREYTEX\GESTION FINANCIERA\BI\4. Tablas Maestras\9. Maestra de Tiendas\MAESTRA_TIENDAS.txt 
+[22/06/2026 11:37:56.30] INICIO LOG tiendas_siesa_job
+[22/06/2026 11:37:56.45] INICIO tiendas_siesa_job.py 
+[22/06/2026 11:37:56.45] SOURCE=\\svr-fs\CREYTEX\GESTION FINANCIERA\BI\4. Tablas Maestras\9. Maestra de Tiendas\MAESTRA_TIENDAS.txt 
 NO CHANGES: la versión activa ya corresponde a este archivo (hash igual).
-[11/05/2026 12:57:50.09] OK tiendas_siesa_job log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\tiendas_siesa_job.log 
+[22/06/2026 11:38:03.00] OK tiendas_siesa_job log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\tiendas_siesa_job.log 
