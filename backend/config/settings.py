@@ -26,6 +26,9 @@ load_dotenv(ROOT_DIR / ".env")
 # Los endpoints internos agregan /api/... desde el código.
 SQLSERVER_API_URL = os.getenv("SQLSERVER_API_URL", "http://localhost:5031").strip().rstrip("/")
 
+SQLSERVER_API_TIMEOUT_SECONDS = int(
+    os.getenv("SQLSERVER_API_TIMEOUT_SECONDS", "180").strip()
+)
 
 SEGMENTACION_CARDS_PER_PAGE = int(
     os.getenv("SEGMENTACION_CARDS_PER_PAGE", "16").strip()

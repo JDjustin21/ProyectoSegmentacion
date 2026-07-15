@@ -1,11 +1,11 @@
-[03/07/2026  7:05:02.34] INICIO LOG inventario_job
-[03/07/2026  7:05:02.35] INV_BATCH_SIZE=200 
-[03/07/2026  7:05:02.36] INV_API_TIMEOUT=180 
-[03/07/2026  7:05:02.37] INICIO python -m backend.tools.ingestion.inventario_job 
-2026-07-03 07:05:03,203 | INFO | Logger iniciado en consola/stdout.
-2026-07-03 07:05:03,204 | INFO | Config: MODO_INVENTARIO_COMPLETO=True INV_API_TIMEOUT=180
-2026-07-03 07:05:03,438 | INFO | inventario_actual_staging truncada correctamente antes de iniciar la carga.
-2026-07-03 07:05:03,438 | INFO | Llamando API de inventario en modo completo...
+[15/07/2026  7:05:02.32] INICIO LOG inventario_job
+[15/07/2026  7:05:02.33] INV_BATCH_SIZE=200 
+[15/07/2026  7:05:02.34] INV_API_TIMEOUT=180 
+[15/07/2026  7:05:02.35] INICIO python -m backend.tools.ingestion.inventario_job 
+2026-07-15 07:05:03,190 | INFO | Logger iniciado en consola/stdout.
+2026-07-15 07:05:03,190 | INFO | Config: MODO_INVENTARIO_COMPLETO=True INV_API_TIMEOUT=180
+2026-07-15 07:05:03,438 | INFO | inventario_actual_staging truncada correctamente antes de iniciar la carga.
+2026-07-15 07:05:03,439 | INFO | Llamando API de inventario en modo completo...
 Traceback (most recent call last):
   File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
     sock = connection.create_connection(
@@ -105,4 +105,4 @@ Traceback (most recent call last):
   File "C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\.venv\Lib\site-packages\requests\adapters.py", line 677, in send
     raise ConnectionError(e, request=request)
 requests.exceptions.ConnectionError: HTTPConnectionPool(host='localhost', port=5031): Max retries exceeded with url: /api/sqlserver/inventario-existencias/consultar (Caused by NewConnectionError("HTTPConnection(host='localhost', port=5031): Failed to establish a new connection: [WinError 10061] No se puede establecer una conexión ya que el equipo de destino denegó expresamente dicha conexión"))
-[03/07/2026  7:05:21.92] ERROR inventario_job rc=1 log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_job.log 
+[15/07/2026  7:05:21.86] ERROR inventario_job rc=1 log=C:\Proyectos Justin\Codigo Proyectos\ProyectoSegmentacion\backend\logs\jobs\inventario_job.log 

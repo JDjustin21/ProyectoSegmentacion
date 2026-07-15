@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any, Dict, List
 
 import requests
-
+from backend.config.settings import SQLSERVER_API_TIMEOUT_SECONDS
 
 class SegmentacionService:
     """
@@ -43,8 +43,23 @@ class SegmentacionService:
 
         url = f"{self.api_base_url}/api/sqlserver/referencias/consultar"
 
-        response = requests.post(url, timeout=30)
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                url,
+                timeout=(10, SQLSERVER_API_TIMEOUT_SECONDS),
+            )
+            response.raise_for_status()
+        except requests.exceptions.ReadTimeout as exc:
+            raise RuntimeError(
+                "La API de SQL Server no respondió dentro del tiempo configurado "
+                f"({SQLSERVER_API_TIMEOUT_SECONDS} segundos). "
+                "El endpoint de referencias puede estar tardando demasiado o SQL Server puede estar ocupado."
+            ) from exc
+        except requests.exceptions.ConnectionError as exc:
+            raise RuntimeError(
+                f"No fue posible conectar con la API de SQL Server en {self.api_base_url}. "
+                "Revise que el servicio esté iniciado y que el puerto configurado esté escuchando."
+            ) from exc
 
         data = response.json()
         datos = data.get("datos", [])

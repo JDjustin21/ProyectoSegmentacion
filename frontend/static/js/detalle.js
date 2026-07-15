@@ -1375,6 +1375,7 @@
 
         try {
         await cargarTiendas(dom);
+        await cargarMetricas(dom);
         renderTiendas(dom);
         calcularYActualizarMetricas(dom);
       } catch (err) {

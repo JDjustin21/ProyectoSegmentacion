@@ -890,10 +890,14 @@ class SegmentacionDbService:
             return {"existe": False, "segmentacion": None}
 
         sql_det = """
-            SELECT llave_naval, talla, cantidad
+            SELECT
+                llave_naval,
+                talla,
+                cantidad,
+                codigo_barras
             FROM segmentacion_detalle
             WHERE id_segmentacion = %(id)s
-              AND COALESCE(estado_detalle,'Activo') = 'Activo';
+            AND COALESCE(estado_detalle, 'Activo') = 'Activo';
         """
         det = self._repo.fetch_all(sql_det, {"id": head["id_segmentacion"]})
 
@@ -1112,15 +1116,30 @@ class SegmentacionDbService:
             if filas_activo:
                 cur.executemany("""
                     INSERT INTO segmentacion_detalle (
-                        id_segmentacion, llave_naval, talla, cantidad, codigo_barras, estado_detalle, fecha_actualizacion
+                        id_segmentacion,
+                        llave_naval,
+                        talla,
+                        cantidad,
+                        codigo_barras,
+                        estado_detalle,
+                        fecha_actualizacion
                     )
                     VALUES (
-                        %(id_segmentacion)s, %(llave_naval)s, %(talla)s, %(cantidad)s, %(codigo_barras)s, 'Activo', %(fecha_actualizacion)s
+                        %(id_segmentacion)s,
+                        %(llave_naval)s,
+                        %(talla)s,
+                        %(cantidad)s,
+                        %(codigo_barras)s,
+                        'Activo',
+                        %(fecha_actualizacion)s
                     )
                     ON CONFLICT (id_segmentacion, llave_naval, talla)
                     DO UPDATE SET
                         cantidad = EXCLUDED.cantidad,
-                        codigo_barras = EXCLUDED.codigo_barras,
+                        codigo_barras = COALESCE(
+                            NULLIF(BTRIM(EXCLUDED.codigo_barras), ''),
+                            NULLIF(BTRIM(segmentacion_detalle.codigo_barras), '')
+                        ),
                         estado_detalle = 'Activo',
                         fecha_actualizacion = EXCLUDED.fecha_actualizacion;
                 """, [{
@@ -1278,35 +1297,45 @@ class SegmentacionDbService:
         """
         return self._repo.fetch_all(sql)
 
-    def export_dataset_por_rango(self, desde: datetime, hasta: datetime) -> List[Dict[str, Any]]:
+    def export_dataset_por_rango(
+        self,
+        desde: datetime,
+        hasta: datetime
+    ) -> List[Dict[str, Any]]:
         sql = f"""
             SELECT
                 s.id_segmentacion,
-                s.fecha_creacion,
                 s.id_usuario,
                 s.id_version_tiendas,
-                s.referencia,
-                s.codigo_barras,
-                s.descripcion,
-                s.categoria,
-                s.linea,
-                s.tipo_portafolio,
-                s.precio_unitario,
-                s.estado_sku,
-                s.cuento,
-                s.tipo_inventario,
                 CASE
                     WHEN COALESCE(d.estado_detalle, 'Activo') = 'Inactivo'
                         THEN 'Inactivo'
                     ELSE s.estado_segmentacion
                 END AS estado_segmentacion,
+
+                s.referencia AS referencia_sku,
+                s.referencia_base,
+                s.codigo_color,
+                s.color,
+                s.perfil_prenda,
+                s.codigo_barras AS codigo_barras_sku,
+                s.descripcion,
+                s.categoria,
+                s.linea,
+                s.tipo_portafolio,
+                s.estado_sku,
+                s.cuento,
+                s.tipo_inventario,
+                s.precio_unitario,
+                s.fecha_creacion,
+
                 d.llave_naval,
                 d.talla,
+                d.codigo_barras AS codigo_barras,
                 d.cantidad,
+                ex.existencia_talla AS existencia,
                 d.estado_detalle,
                 d.fecha_actualizacion,
-
-                ex.existencia_talla AS existencia,
 
                 t.cod_bodega,
                 t.cod_dependencia,
@@ -1317,21 +1346,33 @@ class SegmentacionDbService:
                 t.clima,
                 t.rankin_linea,
                 t.testeo_fnl AS testeo
-            FROM segmentacion_detalle d
-            JOIN segmentacion s
-            ON s.id_segmentacion = d.id_segmentacion
+
+            FROM public.segmentacion_detalle d
+            JOIN public.segmentacion s
+                ON s.id_segmentacion = d.id_segmentacion
             LEFT JOIN {self._view_tiendas} t
-            ON t.llave_naval = d.llave_naval
+                ON t.llave_naval = d.llave_naval
             LEFT JOIN {self._view_existencia_talla} ex
-            ON ex.llave_naval = d.llave_naval
+                ON ex.llave_naval = d.llave_naval
             AND ex.referencia_sku = s.referencia
             AND ex.talla = d.talla
             AND COALESCE(ex.ean, '') = COALESCE(d.codigo_barras, '')
+
             WHERE d.fecha_actualizacion >= %(desde)s
-            AND d.fecha_actualizacion <  %(hasta)s
-            ORDER BY d.fecha_actualizacion ASC, s.id_segmentacion ASC;
+            AND d.fecha_actualizacion < %(hasta)s
+
+            ORDER BY
+                d.fecha_actualizacion ASC,
+                s.id_segmentacion ASC;
         """
-        return self._repo.fetch_all(sql, {"desde": desde, "hasta": hasta})
+
+        return self._repo.fetch_all(
+            sql,
+            {
+                "desde": desde,
+                "hasta": hasta,
+            },
+        )
 
     # -------------------------
     # Referencias nuevas / anotaciones UI

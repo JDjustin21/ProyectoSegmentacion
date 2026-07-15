@@ -567,17 +567,30 @@ def _strip_accents(text: str) -> str:
 
 def normalizar_referencia(raw: str) -> str:
     """
-    Normaliza una referencia tipo:
-    "105174-00 | 628" -> "10517400628"
+    Normaliza referencias e imágenes a una llave referencia+color.
+
+    Ejemplos:
+    - "106971-00 | 116"      -> "10697100116"
+    - "106971-00_116.png"    -> "10697100116"
+    - "106971-00_116_M.png"  -> "10697100116"
     """
     v = (raw or "").strip().upper()
     v = _strip_accents(v)
-    # deja solo letras y números
+
+    # Si viene con talla al final desde Shopify, la quitamos antes de limpiar.
+    # Ej: 106971-00_116_M -> 106971-00_116
+    v = re.sub(r"[_\-\s]+(XS|S|M|L|XL|XXL|XXXL|U|UNI|UNICA)$", "", v)
+
+    # Deja solo letras y números.
     v = re.sub(r"[^A-Z0-9]+", "", v)
     return v
 
 def _images_dir() -> Path:
-    # usa el static_folder real de Flask (sin adivinar rutas)
+    configured_dir = (getattr(settings, "REFERENCIAS_IMAGES_DIR", "") or "").strip()
+
+    if configured_dir:
+        return Path(configured_dir)
+
     return Path(current_app.static_folder) / "assets" / "images" / "referencias"
 
 
@@ -594,19 +607,18 @@ def _rebuild_index_if_needed(force: bool = False, ttl_seconds: int = 60) -> None
     by_key = {}
 
     if img_dir.exists():
-        for p in img_dir.iterdir():
+        for p in sorted(img_dir.iterdir(), key=lambda x: x.name.lower()):
             if not p.is_file():
                 continue
+
             ext = p.suffix.lower()
             if ext not in _ALLOWED_EXTS:
                 continue
 
-            key = normalizar_referencia(p.stem)  # nombre sin extensión
+            key = normalizar_referencia(p.stem)
             if not key:
                 continue
 
-            # si hay duplicados (misma key con diferentes ext),
-            # nos quedamos con el primero que aparezca (MVP).
             if key not in by_key:
                 by_key[key] = p.name
 
